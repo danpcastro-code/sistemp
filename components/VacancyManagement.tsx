@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vacancy, VacancyStatus, ContractStatus, Occupation, LegalParameter, ConvokedPerson, ConvocationStatus, UserRole, CompetitionType } from '../types';
-import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate } from '../utils';
+import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString } from '../utils';
 import { 
-  Search, Plus, ChevronRight, Building2, Info, Clock, ListFilter, FastForward, XCircle, Trash2, MapPin, Calendar, X
+  Search, Plus, ChevronRight, Building2, Info, Clock, ListFilter, FastForward, Trash2, MapPin, Calendar, X, UserCheck
 } from 'lucide-react';
 import { differenceInDays, parseISO, startOfDay, format, addYears } from 'date-fns';
 
@@ -53,17 +53,18 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
   const sortedPendingCandidates = useMemo(() => {
     if (!selectedVacancy) return [];
     
-    // Filtro flexível: Perfis agora podem ser parciais (ex: Professor Substituto bate com Professor Substituto - Computação)
+    // Normalização robusta para comparação insensível a acentos e maiúsculas
+    const vacancyTypeNormalized = normalizeString(selectedVacancy.type);
+
     return convocations
       .filter(c => {
-          const isPending = c.status === ConvocationStatus.PENDING;
-          if (!isPending) return false;
+          if (c.status !== ConvocationStatus.PENDING) return false;
+          
+          const candidateProfileNormalized = normalizeString(c.profile || "");
 
-          const candidateProfile = (c.profile || "").toLowerCase().trim();
-          const vacancyType = (selectedVacancy.type || "").toLowerCase().trim();
-
-          // Retorna verdadeiro se um contém o outro
-          return candidateProfile.includes(vacancyType) || vacancyType.includes(candidateProfile);
+          // Correspondência flexível: um deve conter o outro após normalização
+          return candidateProfileNormalized.includes(vacancyTypeNormalized) || 
+                 vacancyTypeNormalized.includes(candidateProfileNormalized);
       })
       .sort((a, b) => a.ranking - b.ranking);
   }, [convocations, selectedVacancy]);
@@ -109,7 +110,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
 
   const handleDeleteVacancy = (vacancyId: string, vacancyCode: string) => {
     if (!confirm(`Deseja realmente excluir o grupo ${vacancyCode}? Esta ação não pode ser desfeita.`)) return;
-    
     setVacancies(prev => prev.filter(v => v.id !== vacancyId));
     onLog('EXCLUIR_VAGA', `Grupo ${vacancyCode} foi excluído permanentemente.`);
   };
@@ -255,7 +255,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                             <button 
                               onClick={() => handleDeleteVacancy(v.id, v.code)}
                               className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                              title="Excluir Grupo (Disponível apenas para grupos sem vínculos)"
+                              title="Excluir Grupo"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -326,7 +326,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                               setShowAddContractModal(true);
                           }
                       }}
-                      title={`Posto #${idx} | Saldo: ${remDays} dias ${isSelected ? '(Selecionado)' : ''}`}
                       className={`w-7 h-7 rounded-md flex items-center justify-center text-[8px] font-black border transition-all relative ${
                           isSelected ? 'ring-2 ring-blue-500 ring-offset-2 border-blue-600 scale-110 z-10' : ''
                       } ${
@@ -337,18 +336,10 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                       }`}
                     >
                       {idx}
-                      {activeOcc && <div className="absolute top-0 right-0 w-1 h-1 bg-white rounded-full m-0.5" />}
                     </button>
                   );
                 })}
               </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-4 px-2">
-                <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 bg-green-500 rounded-sm"></div><span className="text-[9px] font-black uppercase text-slate-400">Ativo</span></div>
-                <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 bg-white border border-slate-200 rounded-sm"></div><span className="text-[9px] font-black uppercase text-slate-400">Livre</span></div>
-                <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 bg-blue-100 border border-blue-200 rounded-sm"></div><span className="text-[9px] font-black uppercase text-slate-400">Vago (Histórico)</span></div>
-                <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 bg-red-100 border border-red-200 rounded-sm"></div><span className="text-[9px] font-black uppercase text-slate-400">Esgotado</span></div>
             </div>
 
             <div className="mt-12">
@@ -359,14 +350,8 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                             <h3 className="text-lg font-black text-slate-800 tracking-tight">
                                 {selectedSlotFilter !== null ? `Histórico do Posto #${selectedSlotFilter}` : 'Vínculos e Ciclos de Ocupação'}
                             </h3>
-                            {selectedSlotFilter !== null && <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Mostrando apenas ocupações da vaga selecionada acima</p>}
                         </div>
                     </div>
-                    {selectedSlotFilter !== null && (
-                        <button onClick={() => setSelectedSlotFilter(null)} className="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
-                            Ver Todos os Postos
-                        </button>
-                    )}
                 </div>
                 <div className="overflow-x-auto rounded-3xl border border-slate-100 shadow-sm">
                     <table className="w-full text-left">
@@ -384,78 +369,31 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                         <tbody className="divide-y divide-slate-50 text-[11px]">
                             {displayedOccupations.length > 0 ? (
                                 displayedOccupations.map(occ => {
-                                        const remDaysSlot = getSlotRemainingDays(selectedVacancy, occ.slotIndex);
                                         const remDaysContract = Math.max(0, differenceInDays(parseISO(occ.endDate), startOfDay(new Date())));
-                                        
                                         return (
-                                            <tr key={occ.id} className={`hover:bg-slate-50 transition-colors ${selectedSlotFilter === occ.slotIndex ? 'bg-blue-50/30' : ''}`}>
+                                            <tr key={occ.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-black text-slate-400">Posto #{occ.slotIndex}</span>
-                                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border w-fit mt-1 ${occ.order === 1 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                                                            {occ.order}ª Ocupação
-                                                        </span>
-                                                    </div>
+                                                    <span className="font-black text-slate-400">Posto #{occ.slotIndex}</span>
+                                                    <span className="block text-[8px] font-black uppercase text-blue-600 mt-1">{occ.order}ª Ocupação</span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-slate-700">{occ.contractedName}</span>
-                                                        <span className={`text-[8px] font-black uppercase mt-1 ${
-                                                            occ.competition === CompetitionType.PCD ? 'text-emerald-600' : 
-                                                            occ.competition === CompetitionType.PPP ? 'text-indigo-600' : 
-                                                            'text-slate-400'
-                                                        }`}>
-                                                            {occ.competition || 'Ampla Concorrência'}
-                                                        </span>
-                                                    </div>
+                                                    <span className="font-bold text-slate-700">{occ.contractedName}</span>
+                                                    <span className="block text-[8px] font-black uppercase text-slate-400 mt-1">{occ.competition}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-slate-400 text-[10px]">{formatDisplayDate(occ.startDate)}</span>
-                                                        <span className="font-bold text-slate-800">{formatDisplayDate(occ.endDate)}</span>
-                                                    </div>
+                                                    <span className="text-slate-400">{formatDisplayDate(occ.startDate)} a</span>
+                                                    <span className="font-bold text-slate-800 ml-1">{formatDisplayDate(occ.endDate)}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-red-500">{formatDisplayDate(occ.projectedFinalDate)}</span>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="flex flex-col items-center">
-                                                        <span className="font-black text-slate-800">{remDaysContract} dias</span>
-                                                        <span className="text-[8px] text-slate-400 uppercase font-bold">Vigência Atual</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${occ.status === ContractStatus.ACTIVE ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
-                                                        {occ.status}
-                                                    </span>
-                                                </td>
+                                                <td className="px-6 py-4 text-center font-black">{remDaysContract} dias</td>
+                                                <td className="px-6 py-4 text-right uppercase text-[9px] font-black">{occ.status}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     {occ.status === ContractStatus.ACTIVE && canEdit && (
                                                         <div className="flex justify-end space-x-2">
-                                                            <button 
-                                                                onClick={() => {
-                                                                    setExtendingOccId(occ.id);
-                                                                    setExtAmendmentTerm('');
-                                                                    setExtNewEndDate(format(addYears(parseISO(occ.endDate), 1), 'yyyy-MM-dd'));
-                                                                    setShowExtendModal(true);
-                                                                }}
-                                                                disabled={remDaysSlot <= 0}
-                                                                className="p-2 bg-white border border-slate-200 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"
-                                                                title="Prorrogar Contrato"
-                                                            >
-                                                                <FastForward size={14} />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => {
-                                                                    setRescindingOccId(occ.id);
-                                                                    setRescindDate(format(new Date(), 'yyyy-MM-dd'));
-                                                                    setShowRescindModal(true);
-                                                                }}
-                                                                className="p-2 bg-white border border-slate-200 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"
-                                                                title="Rescindir Contrato"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
+                                                            <button onClick={() => { setExtendingOccId(occ.id); setExtNewEndDate(format(addYears(parseISO(occ.endDate), 1), 'yyyy-MM-dd')); setShowExtendModal(true); }} className="p-2 border rounded-lg hover:bg-blue-600 hover:text-white"><FastForward size={14} /></button>
+                                                            <button onClick={() => { setRescindingOccId(occ.id); setRescindDate(format(new Date(), 'yyyy-MM-dd')); setShowRescindModal(true); }} className="p-2 border rounded-lg hover:bg-red-500 hover:text-white"><Trash2 size={14} /></button>
                                                         </div>
                                                     )}
                                                 </td>
@@ -463,11 +401,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                         );
                                     })
                             ) : (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-300 italic font-medium">
-                                        {selectedSlotFilter !== null ? `Nenhum vínculo histórico registrado para o posto #${selectedSlotFilter}.` : 'Nenhuma ocupação registrada neste grupo.'}
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-300 italic">Nenhuma ocupação registrada.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -526,65 +460,38 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
           </div>
       )}
 
-      {/* MODAL: Prorrogação */}
-      {showExtendModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 shadow-2xl animate-in zoom-in duration-200">
-                <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center"><Calendar className="mr-2 text-blue-600" /> Prorrogação</h2>
-                <form onSubmit={handleExtendContract} className="space-y-4">
-                    <input required value={extAmendmentTerm} onChange={e => setExtAmendmentTerm(e.target.value)} className="w-full border border-slate-200 rounded-xl p-3 text-sm font-bold" placeholder="Nº Termo Aditivo" />
-                    <input required type="date" value={extNewEndDate} onChange={e => setExtNewEndDate(e.target.value)} className="w-full border border-slate-200 rounded-xl p-3 text-sm font-bold" />
-                    <div className="pt-4 flex gap-3">
-                        <button type="button" onClick={() => setShowExtendModal(false)} className="flex-1 py-3 text-slate-400 font-bold uppercase text-[10px]">Cancelar</button>
-                        <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px]">Confirmar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {/* MODAL: Rescisão */}
-      {showRescindModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2rem] max-sm w-full p-8 shadow-2xl border-2 border-red-50">
-                <h2 className="text-xl font-black text-slate-800 mb-6">Rescindir Contrato</h2>
-                <form onSubmit={handleRescindContract} className="space-y-4">
-                    <input required type="date" value={rescindDate} onChange={e => setRescindDate(e.target.value)} className="w-full border border-slate-200 rounded-xl p-3 text-sm font-bold" />
-                    <div className="pt-4 flex gap-3">
-                        <button type="button" onClick={() => setShowRescindModal(false)} className="flex-1 py-3 text-slate-400 font-bold uppercase text-[10px]">Cancelar</button>
-                        <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black uppercase text-[10px]">Confirmar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
-
       {/* MODAL: Provimento de Posto */}
       {showAddContractModal && targetSlotInfo && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-10 shadow-2xl animate-in zoom-in duration-200">
             <h2 className="text-2xl font-black mb-8 text-slate-800">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-[10px] font-bold text-blue-700 uppercase tracking-widest flex items-center">
-                <Info size={14} className="mr-2" /> Listando apenas candidatos do perfil: {selectedVacancy?.type}
+            
+            <div className={`mb-4 p-4 rounded-2xl border flex items-center space-x-3 ${sortedPendingCandidates.length > 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                {sortedPendingCandidates.length > 0 ? <UserCheck size={20}/> : <Info size={20}/>}
+                <div className="text-xs">
+                    <p className="font-black uppercase">Perfil: {selectedVacancy?.type}</p>
+                    <p className="font-bold opacity-75">{sortedPendingCandidates.length} candidatos elegíveis encontrados.</p>
+                </div>
             </div>
+
             <form onSubmit={handleAddContract} className="space-y-6">
-              <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none">
+              <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                 {sortedPendingCandidates.length > 0 ? (
                   <>
                     <option value="">Selecione o candidato...</option>
                     {sortedPendingCandidates.map(p => (<option key={p.id} value={p.id}>{p.ranking}º - {p.name} ({p.competition})</option>))}
                   </>
                 ) : (
-                  <option value="">Nenhum candidato pendente para este perfil profissional.</option>
+                  <option value="">Nenhum candidato para o perfil: {selectedVacancy?.type}</option>
                 )}
               </select>
               <div className="grid grid-cols-2 gap-5">
-                <input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none"/>
-                <input type="date" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none"/>
+                <input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
+                <input type="date" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
               </div>
               <div className="flex justify-end gap-4 mt-8">
                 <button type="button" onClick={() => setShowAddContractModal(false)} className="px-8 py-4 font-bold text-slate-400 uppercase text-xs">Cancelar</button>
-                <button type="submit" disabled={sortedPendingCandidates.length === 0} className="px-12 py-4 bg-blue-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100">Contratar</button>
+                <button type="submit" disabled={sortedPendingCandidates.length === 0} className="px-12 py-4 bg-blue-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50">Contratar</button>
               </div>
             </form>
           </div>
