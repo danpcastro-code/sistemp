@@ -1,304 +1,678 @@
 
-import React, { useState, useMemo } from 'react';
-import { Vacancy, ConvokedPerson, Occupation, CompetitionType, ContractStatus } from '../types';
-import { calculateDaysUsed, maskCPF } from '../utils';
+import React, { useState, useEffect } from 'react';
+import { Vacancy, VacancyStatus, ContractStatus, Occupation, LegalParameter, ConvokedPerson, ConvocationStatus, CompetitionType, UserRole } from '../types';
+import { getVacancyStats, generateId, calculateProjectedEndDate, suggestInitialEndDate, shouldArchiveOccupation, getWarningInfo, calculateDaysUsed } from '../utils';
 import { 
-  FileText, 
-  Download, 
   Search, 
-  Filter, 
-  PieChart as PieIcon, 
-  Users, 
-  Calendar,
-  Building2,
-  AlertTriangle,
-  Briefcase,
-  Award,
-  RefreshCw
+  Plus, 
+  ChevronRight, 
+  History, 
+  Building2, 
+  Layers, 
+  Calendar, 
+  UserX, 
+  CalendarClock, 
+  UserCheck,
+  X,
+  Mail,
+  Bell,
+  Users,
+  AlertCircle,
+  FileSearch,
+  ArrowRight
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { format } from 'date-fns';
+import { format, addYears } from 'date-fns';
 
-interface ReportsViewProps {
+interface VacancyManagementProps {
   vacancies: Vacancy[];
+  setVacancies: React.Dispatch<React.SetStateAction<Vacancy[]>>;
+  parameters: LegalParameter[];
   convocations: ConvokedPerson[];
+  setConvocations: React.Dispatch<React.SetStateAction<ConvokedPerson[]>>;
+  userRole: UserRole;
 }
 
-const COLORS = ['#3b82f6', '#f59e0b', '#a855f7', '#10b981'];
+const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVacancies, parameters, convocations, setConvocations, userRole }) => {
+  const isAdmin = userRole === UserRole.ADMIN;
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
+  const [focusedSlot, setFocusedSlot] = useState<number | null>(null);
+  
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddContractModal, setShowAddContractModal] = useState(false);
+  const [terminationTarget, setTerminationTarget] = useState<{ vacancyId: string, occupationId: string } | null>(null);
+  const [extensionTarget, setExtensionTarget] = useState<{ vacancyId: string, occupationId: string } | null>(null);
 
-const ReportsView: React.FC<ReportsViewProps> = ({ vacancies, convocations }) => {
-  const [selectedNotice, setSelectedNotice] = useState<string>('all');
-  const [selectedCargo, setSelectedCargo] = useState<string>('all');
-  const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
+  const [formStartDate, setFormStartDate] = useState('');
+  const [formEndDate, setFormEndDate] = useState('');
+  const [formProjectedDate, setFormProjectedDate] = useState('');
+  const [selectedPersonId, setSelectedPersonId] = useState('');
+  
+  const [targetSlotInfo, setTargetSlotInfo] = useState<{ slotIndex: number, originalCompetition?: CompetitionType, remainingDays: number } | null>(null);
 
-  const availableNotices = useMemo(() => {
-    const notices = new Set<string>();
-    vacancies.forEach(v => notices.add(v.publicNotice));
-    return Array.from(notices).sort();
+  useEffect(() => {
+    if (selectedVacancy) {
+      const updated = vacancies.find(v => v.id === selectedVacancy.id);
+      if (updated) setSelectedVacancy(updated);
+    }
   }, [vacancies]);
 
-  const availableCargos = useMemo(() => {
-    const cargos = new Set<string>();
-    const source = selectedNotice === 'all' ? vacancies : vacancies.filter(v => v.publicNotice === selectedNotice);
-    source.forEach(v => cargos.add(v.type));
-    return Array.from(cargos).sort();
-  }, [vacancies, selectedNotice]);
-
-  const reportData = useMemo(() => {
-    const data: { 
-      vacancy: Vacancy; 
-      occupation: Occupation; 
-      person?: ConvokedPerson;
-      isReplacement: boolean;
-      prevDaysConsumed: number;
-    }[] = [];
-    
-    vacancies.forEach(v => {
-      const matchNotice = selectedNotice === 'all' || v.publicNotice === selectedNotice;
-      const matchCargo = selectedCargo === 'all' || v.type === selectedCargo;
+  useEffect(() => {
+    if (formStartDate && targetSlotInfo) {
+      const suggestedEnd = suggestInitialEndDate(formStartDate);
+      const projectedFinal = calculateProjectedEndDate(formStartDate, targetSlotInfo.remainingDays);
       
-      if (matchNotice && matchCargo) {
-        v.occupations.forEach(occ => {
-          const person = convocations.find(p => p.id === occ.personId);
-          const personComp = person?.competition || CompetitionType.AC;
-          const matchComp = selectedCompetition === 'all' || personComp === selectedCompetition;
-          
-          if (matchComp) {
-            const previousOccupants = v.occupations.filter(
-              o => o.slotIndex === occ.slotIndex && o.order < occ.order
-            );
-            
-            data.push({ 
-              vacancy: v, 
-              occupation: occ, 
-              person,
-              isReplacement: previousOccupants.length > 0,
-              prevDaysConsumed: calculateDaysUsed(previousOccupants)
-            });
-          }
-        });
-      }
-    });
-    return data.sort((a, b) => b.occupation.startDate.localeCompare(a.occupation.startDate));
-  }, [selectedNotice, selectedCargo, selectedCompetition, vacancies, convocations]);
+      // Corrected typo: changed suggestEnd to suggestedEnd
+      setFormEndDate(suggestedEnd > projectedFinal ? projectedFinal : suggestedEnd);
+      setFormProjectedDate(projectedFinal);
+      
+      const filtered = getEligibleCandidates();
+      if (filtered.length > 0 && !selectedPersonId) setSelectedPersonId(filtered[0].id);
+    }
+  }, [formStartDate, targetSlotInfo]);
 
-  const statsByCargo = useMemo(() => {
-    const cargoMap: Record<string, { total: number; occupied: number }> = {};
-    const sourceVacancies = selectedNotice === 'all' ? vacancies : vacancies.filter(v => v.publicNotice === selectedNotice);
-    sourceVacancies.forEach(v => {
-      if (!cargoMap[v.type]) cargoMap[v.type] = { total: 0, occupied: 0 };
-      cargoMap[v.type].total += v.initialQuantity;
-      cargoMap[v.type].occupied += v.occupations.filter(o => o.status === ContractStatus.ACTIVE).length;
-    });
-    return Object.entries(cargoMap).map(([name, data]) => ({
-      name,
-      ...data,
-      percentage: (data.occupied / data.total) * 100
-    })).sort((a, b) => b.percentage - a.percentage);
-  }, [vacancies, selectedNotice]);
+  const getEligibleCandidates = () => {
+    if (!targetSlotInfo) return convocations.filter(c => c.status === ConvocationStatus.PENDING).sort((a, b) => a.ranking - b.ranking);
+    
+    const { originalCompetition } = targetSlotInfo;
+    const pending = convocations.filter(c => c.status === ConvocationStatus.PENDING);
+    
+    if (!originalCompetition) return pending.sort((a, b) => a.ranking - b.ranking);
 
-  const statsByCompetition = useMemo(() => {
-    const compMap: Record<string, number> = {
-      [CompetitionType.AC]: 0,
-      [CompetitionType.PPP]: 0,
-      [CompetitionType.PCD]: 0
-    };
-    const activeOccupations = reportData.filter(d => d.occupation.status === ContractStatus.ACTIVE);
-    const totalActive = activeOccupations.length || 1;
-    activeOccupations.forEach(d => {
-      const type = d.person?.competition || CompetitionType.AC;
-      compMap[type] = (compMap[type] || 0) + 1;
-    });
-    return Object.entries(compMap).map(([name, count]) => ({
-      name,
-      count,
-      percentage: (count / totalActive) * 100
-    }));
-  }, [reportData]);
+    let filtered = pending.filter(c => c.competition === originalCompetition);
+    if (filtered.length === 0 && originalCompetition !== CompetitionType.AC) {
+      filtered = pending.filter(c => c.competition === CompetitionType.AC);
+    }
 
-  const generalStats = useMemo(() => {
-    const baseVacancies = vacancies.filter(v => {
-        const matchNotice = selectedNotice === 'all' || v.publicNotice === selectedNotice;
-        const matchCargo = selectedCargo === 'all' || v.type === selectedCargo;
-        return matchNotice && matchCargo;
-    });
-    const totalSlots = baseVacancies.reduce((acc, v) => acc + v.initialQuantity, 0);
-    const activeInReport = reportData.filter(d => d.occupation.status === ContractStatus.ACTIVE).length;
-    const replacementsInReport = reportData.filter(d => d.isReplacement).length;
-    const chartData = statsByCompetition.map(s => ({ name: s.name, value: s.count }));
-    return { totalSlots, activeOccupations: activeInReport, vacantSlots: Math.max(0, totalSlots - activeInReport), replacementsCount: replacementsInReport, chartData };
-  }, [vacancies, reportData, statsByCompetition, selectedNotice, selectedCargo]);
-
-  const exportToCSV = () => {
-    const headers = [
-      "Edital", "Vaga/Codigo", "Cargo", "Posto", "Provimento", "Consumo Prev.", 
-      "Contratado", "CPF", "Concorrencia", "Inicio", "Fim", "Status"
-    ];
-    const rows = reportData.map(d => [
-      d.vacancy.publicNotice, d.vacancy.code, d.vacancy.type, d.occupation.slotIndex,
-      d.isReplacement ? "SUBSTITUIÇÃO (REUSO)" : "ORIGINAL",
-      d.prevDaysConsumed > 0 ? `${d.prevDaysConsumed} dias` : "0",
-      d.occupation.contractedName, maskCPF(d.person?.cpf || ''), d.person?.competition || 'AC',
-      d.occupation.startDate, d.occupation.endDate, d.occupation.status
-    ]);
-    const csvContent = ["sep=,", headers.join(","), ...rows.map(row => row.join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `relatorio_auditavel_${format(new Date(), 'yyyyMMdd')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return filtered.sort((a, b) => a.ranking - b.ranking);
   };
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-              <FileText size={24} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Relatório Auditável de Vagas</h2>
-              <p className="text-sm text-slate-500 font-medium">Controle de reuso de postos e substituições temporárias.</p>
-            </div>
-          </div>
-          <button onClick={exportToCSV} className="hidden md:flex items-center space-x-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">
-            <Download size={18} /> <span>Extrair CSV</span>
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <select value={selectedNotice} onChange={(e) => { setSelectedNotice(e.target.value); setSelectedCargo('all'); }} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-              <option value="all">TODOS OS EDITAIS</option>
-              {availableNotices.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div className="relative">
-            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <select value={selectedCargo} onChange={(e) => setSelectedCargo(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-              <option value="all">TODOS OS CARGOS</option>
-              {availableCargos.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="relative">
-            <Award className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <select value={selectedCompetition} onChange={(e) => setSelectedCompetition(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-              <option value="all">TODAS AS CONCORRÊNCIAS</option>
-              <option value={CompetitionType.AC}>AMPLA CONCORRÊNCIA</option>
-              <option value={CompetitionType.PPP}>COTAS (PPP)</option>
-              <option value={CompetitionType.PCD}>PCD</option>
-            </select>
-          </div>
-        </div>
-      </div>
+  const openContractModal = (slotIndex?: number) => {
+    if (!selectedVacancy || !isAdmin) return;
+    
+    const stats = getVacancyStats(selectedVacancy);
+    let slotToUse = slotIndex;
+    let originalComp: CompetitionType | undefined = undefined;
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center">
-                <Search size={16} className="mr-2" /> Histórico de Provimentos
-              </h3>
-              <div className="flex items-center space-x-3">
-                 <span className="text-[10px] font-black bg-blue-100 text-blue-600 border border-blue-200 px-2 py-0.5 rounded uppercase">
-                    {generalStats.replacementsCount} Substituições
-                 </span>
-                 <span className="text-[10px] font-black bg-white border px-2 py-0.5 rounded text-slate-400">
-                    {reportData.length} Contratos
-                 </span>
+    if (slotToUse) {
+      const firstOcc = selectedVacancy.occupations
+        .filter(o => o.slotIndex === slotToUse)
+        .sort((a, b) => a.order - b.order)[0];
+      
+      if (firstOcc) {
+        const firstPerson = convocations.find(p => p.id === firstOcc.personId);
+        originalComp = firstPerson?.competition;
+      }
+    } else {
+      slotToUse = 1;
+      while (stats.slotStats[slotToUse]?.isActive) slotToUse++;
+    }
+
+    setTargetSlotInfo({ 
+      slotIndex: slotToUse!, 
+      originalCompetition: originalComp,
+      remainingDays: stats.slotStats[slotToUse!]?.remaining || selectedVacancy.maxTermDays 
+    });
+    setSelectedPersonId('');
+    setShowAddContractModal(true);
+  };
+
+  const handleSaveVacancy = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!isAdmin) return;
+    const formData = new FormData(e.currentTarget);
+    const paramId = formData.get('legalBase') as string;
+    const selectedParam = parameters.find(p => p.id === paramId);
+    if (!selectedParam) return;
+
+    // Fix: Corrected variable name declaration by removing space
+    const newVacancy: Vacancy = {
+      id: generateId(),
+      code: formData.get('code') as string,
+      legalBase: selectedParam.label,
+      maxTermDays: selectedParam.days,
+      type: formData.get('type') as string,
+      agency: formData.get('agency') as string,
+      unit: formData.get('unit') as string,
+      publicNotice: formData.get('publicNotice') as string,
+      initialQuantity: Number(formData.get('quantity')),
+      status: VacancyStatus.NOT_PROVIDED,
+      creationDate: new Date().toISOString().split('T')[0],
+      occupations: []
+    };
+    setVacancies(prev => [...prev, newVacancy]);
+    setShowAddModal(false);
+  };
+
+  const handleAddContract = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVacancy || !selectedPersonId || !targetSlotInfo || !isAdmin) return;
+
+    const person = convocations.find(p => p.id === selectedPersonId);
+    if (!person) return;
+
+    const slotIdx = targetSlotInfo.slotIndex;
+    const newOccupation: Occupation = {
+      id: generateId(),
+      contractedName: person.name,
+      personId: person.id,
+      slotIndex: slotIdx,
+      order: selectedVacancy.occupations.filter(o => o.slotIndex === slotIdx).length + 1,
+      startDate: formStartDate,
+      endDate: formEndDate,
+      projectedFinalDate: formProjectedDate,
+      isExtensionRequired: formEndDate < formProjectedDate,
+      status: ContractStatus.ACTIVE,
+      notificationsCount: 0
+    };
+
+    setConvocations(prev => prev.map(p => p.id === person.id ? { ...p, status: ConvocationStatus.HIRED } : p));
+    setVacancies(prev => prev.map(v => v.id === selectedVacancy.id ? { ...v, status: VacancyStatus.PROVIDED, occupations: [...v.occupations, newOccupation] } : v));
+    setShowAddContractModal(false);
+    setFormStartDate('');
+    setTargetSlotInfo(null);
+  };
+
+  const handleSimulateEmail = (occId: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setVacancies(prev => prev.map(v => ({
+      ...v,
+      occupations: v.occupations.map(o => o.id === occId ? {
+        ...o,
+        lastNotificationDate: todayStr,
+        notificationsCount: (o.notificationsCount || 0) + 1
+      } : o)
+    })));
+  };
+
+  const handleTerminateContract = (formData: { terminationDate: string, reason: string }) => {
+    if (!terminationTarget || !selectedVacancy || !isAdmin) return;
+    setVacancies(prev => prev.map(v => {
+      if (v.id === selectedVacancy.id) {
+        const updated = v.occupations.map(occ => occ.id === terminationTarget.occupationId ? { ...occ, endDate: formData.terminationDate, status: ContractStatus.ENDED, terminationReason: formData.reason, isExtensionRequired: false } : occ);
+        return { ...v, status: updated.some(o => o.status === ContractStatus.ACTIVE) ? VacancyStatus.PROVIDED : VacancyStatus.NOT_PROVIDED, occupations: updated };
+      }
+      return v;
+    }));
+    setTerminationTarget(null);
+  };
+
+  const handleExtendContract = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!extensionTarget || !selectedVacancy || !isAdmin) return;
+    const newEndDate = new FormData(e.currentTarget).get('newEndDate') as string;
+    
+    setVacancies(prev => prev.map(v => {
+        if (v.id === selectedVacancy.id) {
+            return {
+                ...v,
+                occupations: v.occupations.map(occ => {
+                    if (occ.id === extensionTarget.occupationId) {
+                        return { 
+                            ...occ, 
+                            endDate: newEndDate, 
+                            isExtensionRequired: newEndDate < occ.projectedFinalDate 
+                        };
+                    }
+                    return occ;
+                })
+            };
+        }
+        return v;
+    }));
+    setExtensionTarget(null);
+  };
+
+  const filteredVacancies = vacancies.filter(v => v.code.toLowerCase().includes(searchTerm.toLowerCase()) || v.agency.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  return (
+    <div className="space-y-6">
+      {selectedVacancy ? (() => {
+        const stats = getVacancyStats(selectedVacancy);
+        const mainOccupations = selectedVacancy.occupations.filter(occ => !shouldArchiveOccupation(occ));
+        
+        return (
+          <div className="space-y-6 animate-in slide-in-from-right duration-300">
+            <button onClick={() => { setSelectedVacancy(null); setFocusedSlot(null); }} className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center mb-4 transition-colors group">
+              <ChevronRight size={16} className="rotate-180 mr-1 group-hover:-translate-x-1 transition-transform" /> Voltar para Lista
+            </button>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+                  <div className="flex justify-between items-start mb-8">
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest">{selectedVacancy.agency}</span>
+                        <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest border border-indigo-100">{selectedVacancy.publicNotice}</span>
+                      </div>
+                      <h2 className="text-3xl font-extrabold text-slate-900 leading-none">{selectedVacancy.code}</h2>
+                      <p className="text-slate-500 font-medium mt-1">{selectedVacancy.type} <span className="text-slate-300 mx-2">|</span> {selectedVacancy.unit}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-4 py-1.5 rounded-full text-xs font-bold border ${selectedVacancy.status === VacancyStatus.PROVIDED ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{selectedVacancy.status}</span>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Saldo Total Grupo: {stats.daysRemainingTotal} dias</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-200/60 shadow-inner">
+                    <div className="flex justify-between items-center mb-6">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center"><Layers size={14} className="mr-2" /> Situação dos Postos (Clique p/ Histórico)</h4>
+                        {focusedSlot && (
+                            <button onClick={() => setFocusedSlot(null)} className="text-[10px] font-black text-blue-600 hover:underline uppercase flex items-center">
+                                <X size={12} className="mr-1" /> Limpar Filtro
+                            </button>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-6">
+                      {Array.from({ length: selectedVacancy.initialQuantity }).map((_, i) => {
+                        const idx = i + 1;
+                        const slot = stats.slotStats[idx] || { used: 0, remaining: selectedVacancy.maxTermDays, percentage: 0, isActive: false };
+                        const isFocused = focusedSlot === idx;
+                        
+                        return (
+                          <div key={idx} className="flex flex-col items-center">
+                            <button 
+                                onClick={() => setFocusedSlot(idx)}
+                                className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center font-bold text-sm transition-all relative overflow-hidden group ${isFocused ? 'ring-4 ring-blue-500 ring-offset-2' : ''} ${slot.isActive ? 'bg-blue-600 text-white shadow-xl shadow-blue-200' : 'bg-white text-slate-300 border border-slate-200'}`}
+                            >
+                              {idx}
+                              <div className="absolute bottom-0 left-0 h-1.5 bg-slate-100 w-full"><div className="h-full bg-blue-300" style={{ width: `${Math.min(100, slot.percentage)}%` }} /></div>
+                              <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors flex items-center justify-center">
+                                <FileSearch size={16} className="opacity-0 group-hover:opacity-100 text-white" />
+                              </div>
+                            </button>
+                            {isAdmin && !slot.isActive && slot.remaining > 0 && (
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openContractModal(idx); }}
+                                  className="mt-2 p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100 shadow-sm" 
+                                  title="Substituir/Prover Posto"
+                                >
+                                    <UserCheck size={14} />
+                                </button>
+                            )}
+                            <span className="text-[9px] mt-1 font-extrabold text-slate-400">{slot.remaining}d saldo</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="font-bold text-slate-700 flex items-center uppercase tracking-wider text-xs">
+                        {focusedSlot ? (
+                            <><FileSearch size={16} className="mr-2 text-blue-600" /> Histórico Isolado: Posto #{focusedSlot}</>
+                        ) : (
+                            <><History size={16} className="mr-2 text-slate-400" /> Linha do Tempo de Ocupação (Todos os Postos)</>
+                        )}
+                    </h3>
+                    {focusedSlot && (
+                        <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded uppercase">
+                            Filtrado
+                        </span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {(() => {
+                        const filteredOccs = focusedSlot 
+                            ? selectedVacancy.occupations.filter(o => o.slotIndex === focusedSlot)
+                            : mainOccupations;
+
+                        return filteredOccs.length > 0 ? (
+                            [...filteredOccs].sort((a, b) => b.startDate.localeCompare(a.startDate)).map((occ) => {
+                                const warn = getWarningInfo(occ);
+                                const person = convocations.find(p => p.id === occ.personId);
+                                const canExtend = occ.status === ContractStatus.ACTIVE && occ.endDate < occ.projectedFinalDate;
+                                // Fix: Corrected variable name declaration by removing space
+                                const daysConsumed = calculateDaysUsed([occ]);
+                                
+                                return (
+                                <div key={occ.id} className={`p-5 flex flex-col md:flex-row md:items-center justify-between hover:bg-slate-50 transition-colors ${focusedSlot ? 'border-l-4 border-blue-500' : ''}`}>
+                                    <div className="flex items-center space-x-5">
+                                    <div className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center font-bold text-xs ${occ.status === ContractStatus.ACTIVE ? (warn.isWarning ? (warn.daysLeft < 0 ? 'bg-red-600 text-white shadow-lg animate-pulse' : 'bg-amber-500 text-white shadow-lg') : 'bg-blue-600 text-white shadow-lg') : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
+                                        <span className="text-[9px] opacity-60 uppercase">Posto</span>#{occ.slotIndex}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center space-x-3">
+                                        <p className="font-bold text-slate-800 text-base">{occ.contractedName}</p>
+                                        {person?.competition && (
+                                            <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-2 py-0.5 rounded-full border border-slate-200 uppercase tracking-tighter">
+                                            {person.competition === CompetitionType.AC ? 'AC' : person.competition === CompetitionType.PCD ? 'PCD' : 'PPP'}
+                                            </span>
+                                        )}
+                                        {warn.isWarning && (
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border flex items-center ${warn.daysLeft < 0 ? 'bg-red-100 text-red-600 border-red-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+                                            <Bell size={10} className="mr-1" /> {warn.label.toUpperCase()}
+                                            </span>
+                                        )}
+                                        {occ.status === ContractStatus.ENDED && <span className="bg-red-50 text-red-600 text-[9px] font-black px-2 py-0.5 rounded-full border border-red-100">ENCERRADO</span>}
+                                        </div>
+                                        <div className="text-xs text-slate-500 flex flex-wrap items-center mt-1.5 gap-y-1 gap-x-3">
+                                        {/* Fix: Replaced parseISO with native Date parsing */}
+                                        <span className="flex items-center font-medium"><Calendar size={12} className="mr-1" /> {format(new Date(occ.startDate + 'T00:00:00'), 'dd/MM/yyyy')} <ArrowRight size={10} className="mx-1" /> <strong>{format(new Date(occ.endDate + 'T00:00:00'), 'dd/MM/yyyy')}</strong></span>
+                                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-bold">Consumo: {daysConsumed} dias</span>
+                                        {/* Fix: Replaced parseISO with native Date parsing */}
+                                        <span className="text-[10px] text-slate-400 italic">Limite Posto: {format(new Date(occ.projectedFinalDate + 'T00:00:00'), 'dd/MM/yyyy')}</span>
+                                        </div>
+                                        {occ.terminationReason && (
+                                            <p className="mt-2 text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded border border-red-100 font-medium italic">
+                                                Motivo: {occ.terminationReason}
+                                            </p>
+                                        )}
+                                    </div>
+                                    </div>
+                                    <div className="mt-4 md:mt-0 flex items-center space-x-3">
+                                    {isAdmin && occ.status === ContractStatus.ACTIVE && (
+                                        <>
+                                        <button onClick={() => handleSimulateEmail(occ.id)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-all" title="Aviso Notificação"><Mail size={18} /></button>
+                                        {canExtend && (
+                                            <button onClick={() => setExtensionTarget({ vacancyId: selectedVacancy.id, occupationId: occ.id })} className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-xl transition-colors" title="Prorrogar Vigência"><CalendarClock size={18} /></button>
+                                        )}
+                                        <button onClick={() => setTerminationTarget({ vacancyId: selectedVacancy.id, occupationId: occ.id })} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors" title="Rescindir"><UserX size={18} /></button>
+                                        </>
+                                    )}
+                                    {!isAdmin && occ.status === ContractStatus.ACTIVE && (
+                                        <div className="p-2 text-slate-300" title="Apenas visualização">
+                                        <AlertCircle size={18} />
+                                        </div>
+                                    )}
+                                    </div>
+                                </div>
+                                );
+                            })
+                        ) : (
+                            <div className="p-10 text-center text-slate-400 italic text-sm">Sem registros para este posto/vaga.</div>
+                        );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar de Resumo do Grupo */}
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-6 flex items-center"><Building2 size={16} className="mr-2 text-slate-400" /> Métricas do Grupo</h3>
+                    <div className="space-y-6">
+                        <div>
+                            <div className="flex justify-between items-end mb-2">
+                                <span className="text-xs font-bold text-slate-500">CONSUMO GLOBAL</span>
+                                <span className="text-lg font-black text-slate-800">{Math.round(stats.percentageUsedTotal)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                                <div className={`h-full transition-all duration-1000 ${stats.percentageUsedTotal > 90 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${stats.percentageUsedTotal}%` }} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Dias Restantes</p>
+                                <p className="text-xl font-black text-blue-600">{stats.daysRemainingTotal}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Postos Ativos</p>
+                                <p className="text-xl font-black text-slate-800">{stats.currentlyActiveCount}</p>
+                            </div>
+                        </div>
+                        <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex items-start space-x-3">
+                            <AlertCircle size={16} className="text-indigo-600 mt-0.5" />
+                            <p className="text-[11px] text-indigo-700 leading-relaxed font-medium">
+                                A substituição de contratos neste grupo é permitida enquanto houver saldo de dias disponível para cada posto individualmente.
+                            </p>
+                        </div>
+                    </div>
+                </div>
               </div>
             </div>
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+          </div>
+        );
+      })() : (
+        /* Lista Geral de Vagas Coletivas */
+        <div className="animate-in fade-in duration-300 space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="relative w-full md:w-96 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+              <input type="text" placeholder="Código, órgão ou cargo..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all" />
+            </div>
+            {isAdmin && (
+              <button onClick={() => setShowAddModal(true)} className="w-full md:w-auto flex items-center justify-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg font-bold transition-all active:scale-95"><Plus size={18} /><span>Nova Vaga Coletiva</span></button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead className="sticky top-0 bg-white shadow-sm z-10">
-                  <tr className="text-slate-500 text-[9px] uppercase tracking-widest font-bold border-b border-slate-100">
-                    <th className="px-6 py-4">Candidato / Provimento</th>
-                    <th className="px-6 py-4">Vaga / Posto</th>
-                    <th className="px-6 py-4">Período / Saldo</th>
-                    <th className="px-6 py-4 text-right">Status</th>
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-widest font-bold">
+                    <th className="px-6 py-5">Código / Órgão</th>
+                    <th className="px-6 py-5">Cargo / Perfil</th>
+                    <th className="px-6 py-5 text-center">Ocupação Atual</th>
+                    <th className="px-6 py-5 text-center">Consumo Histórico</th>
+                    <th className="px-6 py-5 text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {reportData.map((d, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors text-sm">
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                           <p className="font-bold text-slate-800 leading-tight">{d.occupation.contractedName}</p>
-                           <div className="flex items-center mt-1 space-x-2">
-                               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase ${d.isReplacement ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                                 {d.isReplacement ? '🔄 Substituição (Reuso)' : 'Original'}
-                               </span>
-                               <span className="text-[9px] text-slate-400 font-bold uppercase">{maskCPF(d.person?.cpf || '')}</span>
-                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase leading-none mb-1">{d.vacancy.type}</p>
-                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                          {d.vacancy.code} (Posto #{d.occupation.slotIndex})
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {/* Fix: Replaced parseISO with native Date parsing */}
-                        <p className="text-xs font-medium text-slate-500">{format(new Date(d.occupation.startDate + 'T00:00:00'), 'dd/MM/yyyy')} a {format(new Date(d.occupation.endDate + 'T00:00:00'), 'dd/MM/yyyy')}</p>
-                        {d.isReplacement && (
-                            <p className="text-[9px] text-amber-600 font-black uppercase mt-1 flex items-center">
-                                <RefreshCw size={10} className="mr-1" /> Contagem Continuada: {d.prevDaysConsumed}d Prévios
-                            </p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${d.occupation.status === ContractStatus.ACTIVE ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
-                          {d.occupation.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-100">
+                  {filteredVacancies.map((v) => {
+                    const stats = getVacancyStats(v);
+                    const hasWarning = v.occupations.some(o => getWarningInfo(o).isWarning);
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedVacancy(v)}>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-4">
+                            <div className={`p-2.5 rounded-xl transition-all ${hasWarning ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                              {hasWarning ? <Bell size={18} className="animate-bounce" /> : <Building2 size={18} />}
+                            </div>
+                            <div>
+                              <p className="font-mono font-black text-slate-800 tracking-tight">{v.code}</p>
+                              <p className="text-[10px] text-slate-400 uppercase font-bold">{v.agency}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-slate-800">{v.type}</p>
+                          <p className="text-xs text-slate-500 italic">{v.publicNotice}</p>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="inline-flex flex-col items-center">
+                            <div className="flex items-center font-black text-blue-600">
+                              <span className="text-lg">{stats.currentlyActiveCount}</span>
+                              <span className="text-xs text-slate-400 mx-1">/</span>
+                              <span className="text-xs text-slate-400">{v.initialQuantity}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col items-center space-y-1">
+                            <div className="w-28 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-700 ${stats.percentageUsedTotal > 80 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${stats.percentageUsedTotal}%` }} /></div>
+                            <span className="text-[10px] text-slate-500 font-extrabold">{Math.round(stats.percentageUsedTotal)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${v.status === VacancyStatus.PROVIDED ? 'bg-green-50 text-green-700 border-green-100' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{v.status}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center">
-              <Award size={16} className="mr-2 text-indigo-500" /> Mix de Concorrência
-            </h3>
-            <div className="space-y-4">
-              {statsByCompetition.map((comp, idx) => (
-                <div key={idx} className={`p-4 rounded-xl border transition-all ${selectedCompetition === comp.name ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-slate-50/30'}`}>
-                  <div className="flex justify-between items-end mb-2">
-                    <p className="text-xs font-bold text-slate-800">{comp.name}</p>
-                    <div className="text-right">
-                      <p className="text-lg font-black text-slate-800 leading-none">{comp.count}</p>
-                      <p className="text-[10px] font-bold text-indigo-600 uppercase">{Math.round(comp.percentage)}%</p>
-                    </div>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${comp.percentage}%` }} />
-                  </div>
+      )}
+
+      {/* Modais de Gestão (Exibidos apenas se isAdmin) */}
+      {isAdmin && showAddModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8 border border-slate-200 animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center"><Building2 size={24} className="mr-2 text-blue-600" /> Nova Vaga Coletiva (Grupo)</h2>
+                    <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
                 </div>
-              ))}
+                <form onSubmit={handleSaveVacancy} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Órgão / Autarquia</label>
+                            <input name="agency" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: Universidade Federal" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Código do Grupo</label>
+                            <input name="code" required className="w-full border border-slate-200 rounded-xl p-3 text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VAG-2024-0XX" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Edital de Referência</label>
+                            <input name="publicNotice" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Edital XX/202X" />
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Cargo / Especialidade</label>
+                            <input name="type" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: Professor Substituto - Computação" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Amparo Legal</label>
+                            <select name="legalBase" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                {parameters.map(p => <option key={p.id} value={p.id}>{p.label} ({p.days/365} anos)</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Qtd de Postos</label>
+                            <input name="quantity" type="number" min="1" max="50" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="1" />
+                        </div>
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-6">
+                        <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
+                        <button type="submit" className="px-8 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-all">Criar Grupo de Vagas</button>
+                    </div>
+                </form>
             </div>
-          </div>
-          <div className="bg-indigo-600 p-6 rounded-2xl shadow-lg text-white">
-             <div className="flex items-center space-x-3 mb-4">
-                <RefreshCw size={24} className="text-indigo-200" />
-                <h3 className="font-bold text-sm uppercase tracking-widest">Lógica de Reuso</h3>
-             </div>
-             <p className="text-xs text-indigo-100 leading-relaxed font-medium">Vagas ocupadas por novo contratado vigoram apenas pelo tempo remanescente. O sistema bloqueia provimentos que excedam o saldo histórico do posto individual.</p>
-             <div className="mt-6 pt-4 border-t border-indigo-500 flex justify-between items-center">
-                <span className="text-[10px] font-black uppercase">Substituições no filtro:</span>
-                <span className="text-xl font-black">{generalStats.replacementsCount}</span>
-             </div>
-          </div>
         </div>
-      </div>
+      )}
+
+      {isAdmin && showAddContractModal && targetSlotInfo && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-lg w-full p-8 border border-slate-200">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center"><UserCheck size={24} className="mr-2 text-blue-600" /> Provimento do Posto #{targetSlotInfo.slotIndex}</h2>
+                    <button onClick={() => setShowAddContractModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                </div>
+                <form onSubmit={handleAddContract} className="space-y-4">
+                    <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mb-4">
+                        <p className="text-[10px] font-black text-blue-400 uppercase">Regra de Substituição</p>
+                        <p className="text-xs text-blue-700 font-medium">Este posto possui um saldo de <strong>{targetSlotInfo.remainingDays} dias</strong>. O novo contrato não poderá exceder este teto legal.</p>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Candidato Convocado (Ranking Ordenado)</label>
+                        <select 
+                            value={selectedPersonId}
+                            onChange={(e) => setSelectedPersonId(e.target.value)}
+                            required
+                            className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        >
+                            <option value="">Selecione o candidato...</option>
+                            {getEligibleCandidates().map(p => (
+                                <option key={p.id} value={p.id}>{p.ranking}º - {p.name} ({p.competition === CompetitionType.AC ? 'AC' : p.competition === CompetitionType.PCD ? 'PCD' : 'PPP'})</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Data de Início</label>
+                        <input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Data Fim (Contratual)</label>
+                            <input type="date" value={formEndDate} onChange={(e) => setFormEndDate(e.target.value)} required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Teto Máximo (Inadmissível)</label>
+                            <input type="date" value={formProjectedDate} readOnly className="w-full border border-slate-100 bg-slate-50 rounded-xl p-3 text-sm text-slate-500 font-bold outline-none" />
+                        </div>
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-6">
+                        <button type="button" onClick={() => setShowAddContractModal(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
+                        <button type="submit" className="px-8 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-all">Efetivar Contrato</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {isAdmin && terminationTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-md w-full p-8 border border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center"><UserX size={24} className="mr-2 text-red-600" /> Rescindir Contrato</h2>
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    handleTerminateContract({
+                        terminationDate: formData.get('terminationDate') as string,
+                        reason: formData.get('reason') as string
+                    });
+                }} className="space-y-4">
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Data Efetiva da Rescisão</label>
+                        <input name="terminationDate" type="date" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Motivo / Fundamentação</label>
+                        <textarea name="reason" required className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none" rows={3} placeholder="Descreva o motivo da rescisão (ex: Desistência, Término Antecipado...)" />
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-6">
+                        <button type="button" onClick={() => setTerminationTarget(null)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
+                        <button type="submit" className="px-8 py-2.5 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition-all">Confirmar Rescisão</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {isAdmin && extensionTarget && (() => {
+        // Encontrar o contrato que está sendo prorrogado
+        const occToExtend = selectedVacancy?.occupations.find(o => o.id === extensionTarget.occupationId);
+        if (!occToExtend) return null;
+
+        // Calcular sugestão: Data de Término Atual + 1 Ano (Aniversário da data)
+        // Fix: Replaced parseISO with native Date parsing
+        const currentEndDate = new Date(occToExtend.endDate + 'T00:00:00');
+        const suggestedDateObj = addYears(currentEndDate, 1);
+        // Fix: Replaced parseISO with native Date parsing
+        const projectedLimitObj = new Date(occToExtend.projectedFinalDate + 'T00:00:00');
+        
+        // Se 1 ano ultrapassar o limite máximo do posto, sugerir o limite máximo
+        const finalSuggestedDate = suggestedDateObj > projectedLimitObj 
+            ? occToExtend.projectedFinalDate 
+            : format(suggestedDateObj, 'yyyy-MM-dd');
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border border-slate-200 animate-in zoom-in duration-200">
+                  <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center"><CalendarClock size={24} className="mr-2 text-indigo-600" /> Prorrogação de Vigência</h2>
+                  <form onSubmit={handleExtendContract} className="space-y-4">
+                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs leading-relaxed">
+                          A prorrogação deve respeitar o <strong>limite máximo improrrogável</strong> calculado na contratação original do posto.
+                      </div>
+                      <div>
+                          <label className="block text-[10px] font-black text-slate-500 uppercase mb-1 tracking-wider">Nova Data de Término</label>
+                          <input 
+                            name="newEndDate" 
+                            type="date" 
+                            defaultValue={finalSuggestedDate} 
+                            required 
+                            className="w-full border border-slate-200 rounded-xl p-4 text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-medium" 
+                          />
+                          <p className="mt-2 text-[9px] text-slate-400 font-bold uppercase tracking-tight">
+                            Sugestão baseada em +1 ano (até limite legal de {format(projectedLimitObj, 'dd/MM/yyyy')})
+                          </p>
+                      </div>
+                      <div className="flex justify-end space-x-3 pt-6">
+                          <button type="button" onClick={() => setExtensionTarget(null)} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cancelar</button>
+                          <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 shadow-indigo-200">Prorrogar</button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
 
-export default ReportsView;
+export default VacancyManagement;
