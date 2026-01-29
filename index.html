@@ -1,227 +1,304 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SisTemp - Controle de Vagas e Contratos</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; letter-spacing: -0.01em; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        
-        @keyframes pulse-ring {
-            0% { transform: scale(.33); opacity: 1; }
-            80%, 100% { opacity: 0; }
-        }
-        .pulse-ring { position: relative; display: flex; align-items: center; justify-content: center; }
-        .pulse-ring::before {
-            content: '';
-            position: absolute;
-            width: 300%;
-            height: 300%;
-            background-color: #22c55e;
-            border-radius: 50%;
-            animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
-        }
-        .glass-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
-    </style>
-    <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.284.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
-    "date-fns": "https://esm.sh/date-fns@2.30.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "recharts": "https://esm.sh/recharts@^3.7.0"
-  }
+
+import React, { useState, useMemo } from 'react';
+import { Vacancy, ConvokedPerson, Occupation, CompetitionType, ContractStatus } from '../types';
+import { calculateDaysUsed, maskCPF } from '../utils';
+import { 
+  FileText, 
+  Download, 
+  Search, 
+  Filter, 
+  PieChart as PieIcon, 
+  Users, 
+  Calendar,
+  Building2,
+  AlertTriangle,
+  Briefcase,
+  Award,
+  RefreshCw
+} from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { format } from 'date-fns';
+
+interface ReportsViewProps {
+  vacancies: Vacancy[];
+  convocations: ConvokedPerson[];
 }
-</script>
-</head>
-<body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
 
-    <script type="module">
-        import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-        import { createRoot } from 'react-dom/client';
-        import { 
-            LayoutDashboard, Users, Settings, LogOut, ShieldCheck, Zap, X, Building2, History, AlertCircle, 
-            Plus, Search, ChevronRight, Award, FileText, Bell, Clock, Database, Globe, Key, Terminal, Download, 
-            CheckCircle2, Info, UserPlus, FileSpreadsheet, UserX, CalendarClock, UserCheck, ArrowRight, RefreshCw,
-            Layers, ShieldAlert, AlertTriangle, Mail, Calendar, Filter, Briefcase, Award as AwardIcon
-        } from 'lucide-react';
-        import { createClient } from '@supabase/supabase-js';
-        import { differenceInDays, parseISO, addDays, format, addYears, isAfter, startOfDay } from 'date-fns';
+const COLORS = ['#3b82f6', '#f59e0b', '#a855f7', '#10b981'];
 
-        // --- CONSTANTS & MOCKS ---
-        const INITIAL_PARAMETERS = [
-            { id: 'p1', label: 'Art 2º, IV', days: 730, description: 'Professores Substitutos' },
-            { id: 'p2', label: 'Art 2º, VI', days: 1460, description: 'Técnicos Especializados' }
-        ];
+const ReportsView: React.FC<ReportsViewProps> = ({ vacancies, convocations }) => {
+  const [selectedNotice, setSelectedNotice] = useState<string>('all');
+  const [selectedCargo, setSelectedCargo] = useState<string>('all');
+  const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
 
-        const INITIAL_VACANCIES = [
-            { id: 'v1', code: 'VAG-2024-001', type: 'Professor Substituto', agency: 'UFRJ', status: 'Provida', initialQuantity: 3, occupations: [], publicNotice: 'Edital 01/2024', maxTermDays: 730 }
-        ];
+  const availableNotices = useMemo(() => {
+    const notices = new Set<string>();
+    vacancies.forEach(v => notices.add(v.publicNotice));
+    return Array.from(notices).sort();
+  }, [vacancies]);
 
-        // --- UTILS ---
-        const generateId = () => Math.random().toString(36).substr(2, 9);
-        const maskCPF = (cpf) => cpf ? `***.${cpf.substring(4, 7)}.${cpf.substring(8, 11)}-**` : '';
-        const calculateDaysUsed = (occupations) => occupations.reduce((acc, occ) => acc + Math.max(0, differenceInDays(parseISO(occ.endDate), parseISO(occ.startDate))), 0);
-        
-        const getWarningInfo = (occ) => {
-            if (occ.status !== 'Ativo') return { isWarning: false };
-            const today = startOfDay(new Date());
-            const daysToFinal = differenceInDays(parseISO(occ.projectedFinalDate), today);
-            if (daysToFinal <= 90) return { isWarning: true, label: 'Vencimento Próximo', daysLeft: daysToFinal, date: occ.projectedFinalDate, type: 'final' };
-            return { isWarning: false };
-        };
+  const availableCargos = useMemo(() => {
+    const cargos = new Set<string>();
+    const source = selectedNotice === 'all' ? vacancies : vacancies.filter(v => v.publicNotice === selectedNotice);
+    source.forEach(v => cargos.add(v.type));
+    return Array.from(cargos).sort();
+  }, [vacancies, selectedNotice]);
 
-        const getVacancyStats = (v) => {
-            const totalCapacity = v.maxTermDays * v.initialQuantity;
-            const used = calculateDaysUsed(v.occupations);
-            const activeSlots = new Set(v.occupations.filter(o => o.status === 'Ativo').map(o => o.slotIndex));
-            return {
-                daysRemainingTotal: Math.max(0, totalCapacity - used),
-                percentageUsedTotal: (used / totalCapacity) * 100,
-                currentlyActiveCount: activeSlots.size
-            };
-        };
-
-        // --- COMPONENTS ---
-
-        const LoginView = ({ onLogin }) => {
-            const [u, setU] = useState('');
-            const [p, setP] = useState('');
-            return (
-                <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-                    <div className="bg-white p-12 rounded-[3rem] shadow-2xl max-w-md w-full text-center">
-                        <div className="inline-flex p-4 bg-blue-600 rounded-3xl mb-6 shadow-xl"><ShieldCheck size={48} className="text-white" /></div>
-                        <h1 className="text-4xl font-black tracking-tighter mb-2">SisTemp</h1>
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">Gestão de Vagas Temporárias</p>
-                        <form onSubmit={e => { e.preventDefault(); if(u==='gestao'&&p==='123') onLogin({name: 'Gestor Administrativo'}); else alert('Erro!'); }} className="space-y-4">
-                            <input value={u} onChange={e=>setU(e.target.value)} placeholder="Usuário (gestao)" className="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" />
-                            <input value={p} onChange={e=>setP(e.target.value)} type="password" placeholder="Senha (123)" className="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" />
-                            <button className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all">Entrar</button>
-                        </form>
-                    </div>
-                </div>
+  const reportData = useMemo(() => {
+    const data: { 
+      vacancy: Vacancy; 
+      occupation: Occupation; 
+      person?: ConvokedPerson;
+      isReplacement: boolean;
+      prevDaysConsumed: number;
+    }[] = [];
+    
+    vacancies.forEach(v => {
+      const matchNotice = selectedNotice === 'all' || v.publicNotice === selectedNotice;
+      const matchCargo = selectedCargo === 'all' || v.type === selectedCargo;
+      
+      if (matchNotice && matchCargo) {
+        v.occupations.forEach(occ => {
+          const person = convocations.find(p => p.id === occ.personId);
+          const personComp = person?.competition || CompetitionType.AC;
+          const matchComp = selectedCompetition === 'all' || personComp === selectedCompetition;
+          
+          if (matchComp) {
+            const previousOccupants = v.occupations.filter(
+              o => o.slotIndex === occ.slotIndex && o.order < occ.order
             );
-        };
+            
+            data.push({ 
+              vacancy: v, 
+              occupation: occ, 
+              person,
+              isReplacement: previousOccupants.length > 0,
+              prevDaysConsumed: calculateDaysUsed(previousOccupants)
+            });
+          }
+        });
+      }
+    });
+    return data.sort((a, b) => b.occupation.startDate.localeCompare(a.occupation.startDate));
+  }, [selectedNotice, selectedCargo, selectedCompetition, vacancies, convocations]);
 
-        const Dashboard = ({ vacancies }) => (
-            <div className="space-y-8 animate-in fade-in duration-700">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Grupos de Vagas</p>
-                        <p className="text-4xl font-black text-slate-800">{vacancies.length}</p>
-                    </div>
-                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Postos Ativos</p>
-                        <p className="text-4xl font-black text-green-600">{vacancies.reduce((acc, v) => acc + getVacancyStats(v).currentlyActiveCount, 0)}</p>
-                    </div>
-                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Status Sistema</p>
-                        <p className="text-4xl font-black text-blue-600 flex items-center">Ativo <Zap size={24} className="ml-2 fill-blue-600" /></p>
-                    </div>
-                </div>
-                <div className="bg-white p-20 rounded-[4rem] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center text-slate-300">
-                    <LayoutDashboard size={80} className="mb-6 opacity-10" />
-                    <h3 className="text-xl font-bold text-slate-400">Ambiente Operacional Pronto</h3>
-                    <p className="italic text-sm mt-2">Clique em "Vagas" no menu lateral para iniciar a gestão.</p>
-                </div>
+  const statsByCargo = useMemo(() => {
+    const cargoMap: Record<string, { total: number; occupied: number }> = {};
+    const sourceVacancies = selectedNotice === 'all' ? vacancies : vacancies.filter(v => v.publicNotice === selectedNotice);
+    sourceVacancies.forEach(v => {
+      if (!cargoMap[v.type]) cargoMap[v.type] = { total: 0, occupied: 0 };
+      cargoMap[v.type].total += v.initialQuantity;
+      cargoMap[v.type].occupied += v.occupations.filter(o => o.status === ContractStatus.ACTIVE).length;
+    });
+    return Object.entries(cargoMap).map(([name, data]) => ({
+      name,
+      ...data,
+      percentage: (data.occupied / data.total) * 100
+    })).sort((a, b) => b.percentage - a.percentage);
+  }, [vacancies, selectedNotice]);
+
+  const statsByCompetition = useMemo(() => {
+    const compMap: Record<string, number> = {
+      [CompetitionType.AC]: 0,
+      [CompetitionType.PPP]: 0,
+      [CompetitionType.PCD]: 0
+    };
+    const activeOccupations = reportData.filter(d => d.occupation.status === ContractStatus.ACTIVE);
+    const totalActive = activeOccupations.length || 1;
+    activeOccupations.forEach(d => {
+      const type = d.person?.competition || CompetitionType.AC;
+      compMap[type] = (compMap[type] || 0) + 1;
+    });
+    return Object.entries(compMap).map(([name, count]) => ({
+      name,
+      count,
+      percentage: (count / totalActive) * 100
+    }));
+  }, [reportData]);
+
+  const generalStats = useMemo(() => {
+    const baseVacancies = vacancies.filter(v => {
+        const matchNotice = selectedNotice === 'all' || v.publicNotice === selectedNotice;
+        const matchCargo = selectedCargo === 'all' || v.type === selectedCargo;
+        return matchNotice && matchCargo;
+    });
+    const totalSlots = baseVacancies.reduce((acc, v) => acc + v.initialQuantity, 0);
+    const activeInReport = reportData.filter(d => d.occupation.status === ContractStatus.ACTIVE).length;
+    const replacementsInReport = reportData.filter(d => d.isReplacement).length;
+    const chartData = statsByCompetition.map(s => ({ name: s.name, value: s.count }));
+    return { totalSlots, activeOccupations: activeInReport, vacantSlots: Math.max(0, totalSlots - activeInReport), replacementsCount: replacementsInReport, chartData };
+  }, [vacancies, reportData, statsByCompetition, selectedNotice, selectedCargo]);
+
+  const exportToCSV = () => {
+    const headers = [
+      "Edital", "Vaga/Codigo", "Cargo", "Posto", "Provimento", "Consumo Prev.", 
+      "Contratado", "CPF", "Concorrencia", "Inicio", "Fim", "Status"
+    ];
+    const rows = reportData.map(d => [
+      d.vacancy.publicNotice, d.vacancy.code, d.vacancy.type, d.occupation.slotIndex,
+      d.isReplacement ? "SUBSTITUIÇÃO (REUSO)" : "ORIGINAL",
+      d.prevDaysConsumed > 0 ? `${d.prevDaysConsumed} dias` : "0",
+      d.occupation.contractedName, maskCPF(d.person?.cpf || ''), d.person?.competition || 'AC',
+      d.occupation.startDate, d.occupation.endDate, d.occupation.status
+    ]);
+    const csvContent = ["sep=,", headers.join(","), ...rows.map(row => row.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `relatorio_auditavel_${format(new Date(), 'yyyyMMdd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <FileText size={24} />
             </div>
-        );
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Relatório Auditável de Vagas</h2>
+              <p className="text-sm text-slate-500 font-medium">Controle de reuso de postos e substituições temporárias.</p>
+            </div>
+          </div>
+          <button onClick={exportToCSV} className="hidden md:flex items-center space-x-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">
+            <Download size={18} /> <span>Extrair CSV</span>
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <select value={selectedNotice} onChange={(e) => { setSelectedNotice(e.target.value); setSelectedCargo('all'); }} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+              <option value="all">TODOS OS EDITAIS</option>
+              {availableNotices.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <select value={selectedCargo} onChange={(e) => setSelectedCargo(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+              <option value="all">TODOS OS CARGOS</option>
+              {availableCargos.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <Award className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <select value={selectedCompetition} onChange={(e) => setSelectedCompetition(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+              <option value="all">TODAS AS CONCORRÊNCIAS</option>
+              <option value={CompetitionType.AC}>AMPLA CONCORRÊNCIA</option>
+              <option value={CompetitionType.PPP}>COTAS (PPP)</option>
+              <option value={CompetitionType.PCD}>PCD</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
-        const SettingsView = ({ status, onSync }) => {
-            const [url, setUrl] = useState(() => JSON.parse(localStorage.getItem('sistemp_cloud_config') || '{}').url || '');
-            const [key, setKey] = useState(() => JSON.parse(localStorage.getItem('sistemp_cloud_config') || '{}').key || '');
-            const save = () => { localStorage.setItem('sistemp_cloud_config', JSON.stringify({url, key})); onSync(); alert('Salvo!'); };
-
-            return (
-                <div className="max-w-2xl mx-auto bg-white p-12 rounded-[3rem] shadow-xl border border-slate-100">
-                    <div className="flex items-center space-x-6 mb-10">
-                        <div className={`p-5 rounded-3xl ${status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}><Database size={32} /></div>
-                        <div>
-                            <h2 className="text-2xl font-black">Nuvem & Sincronização</h2>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acesso compartilhado para equipe</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center">
+                <Search size={16} className="mr-2" /> Histórico de Provimentos
+              </h3>
+              <div className="flex items-center space-x-3">
+                 <span className="text-[10px] font-black bg-blue-100 text-blue-600 border border-blue-200 px-2 py-0.5 rounded uppercase">
+                    {generalStats.replacementsCount} Substituições
+                 </span>
+                 <span className="text-[10px] font-black bg-white border px-2 py-0.5 rounded text-slate-400">
+                    {reportData.length} Contratos
+                 </span>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left">
+                <thead className="sticky top-0 bg-white shadow-sm z-10">
+                  <tr className="text-slate-500 text-[9px] uppercase tracking-widest font-bold border-b border-slate-100">
+                    <th className="px-6 py-4">Candidato / Provimento</th>
+                    <th className="px-6 py-4">Vaga / Posto</th>
+                    <th className="px-6 py-4">Período / Saldo</th>
+                    <th className="px-6 py-4 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {reportData.map((d, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors text-sm">
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                           <p className="font-bold text-slate-800 leading-tight">{d.occupation.contractedName}</p>
+                           <div className="flex items-center mt-1 space-x-2">
+                               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase ${d.isReplacement ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                                 {d.isReplacement ? '🔄 Substituição (Reuso)' : 'Original'}
+                               </span>
+                               <span className="text-[9px] text-slate-400 font-bold uppercase">{maskCPF(d.person?.cpf || '')}</span>
+                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase leading-none mb-1">{d.vacancy.type}</p>
+                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                          {d.vacancy.code} (Posto #{d.occupation.slotIndex})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {/* Fix: Replaced parseISO with native Date parsing */}
+                        <p className="text-xs font-medium text-slate-500">{format(new Date(d.occupation.startDate + 'T00:00:00'), 'dd/MM/yyyy')} a {format(new Date(d.occupation.endDate + 'T00:00:00'), 'dd/MM/yyyy')}</p>
+                        {d.isReplacement && (
+                            <p className="text-[9px] text-amber-600 font-black uppercase mt-1 flex items-center">
+                                <RefreshCw size={10} className="mr-1" /> Contagem Continuada: {d.prevDaysConsumed}d Prévios
+                            </p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${d.occupation.status === ContractStatus.ACTIVE ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                          {d.occupation.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center">
+              <Award size={16} className="mr-2 text-indigo-500" /> Mix de Concorrência
+            </h3>
+            <div className="space-y-4">
+              {statsByCompetition.map((comp, idx) => (
+                <div key={idx} className={`p-4 rounded-xl border transition-all ${selectedCompetition === comp.name ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-slate-50/30'}`}>
+                  <div className="flex justify-between items-end mb-2">
+                    <p className="text-xs font-bold text-slate-800">{comp.name}</p>
+                    <div className="text-right">
+                      <p className="text-lg font-black text-slate-800 leading-none">{comp.count}</p>
+                      <p className="text-[10px] font-bold text-indigo-600 uppercase">{Math.round(comp.percentage)}%</p>
                     </div>
-                    <div className="space-y-6">
-                        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Supabase Project URL" className="w-full p-4 bg-slate-50 border rounded-2xl font-mono text-sm" />
-                        <input value={key} onChange={e=>setKey(e.target.value)} type="password" placeholder="Supabase Anon Key" className="w-full p-4 bg-slate-50 border rounded-2xl font-mono text-sm" />
-                        <button onClick={save} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-indigo-700 transition-all">Conectar Equipe</button>
-                    </div>
+                  </div>
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${comp.percentage}%` }} />
+                  </div>
                 </div>
-            );
-        };
+              ))}
+            </div>
+          </div>
+          <div className="bg-indigo-600 p-6 rounded-2xl shadow-lg text-white">
+             <div className="flex items-center space-x-3 mb-4">
+                <RefreshCw size={24} className="text-indigo-200" />
+                <h3 className="font-bold text-sm uppercase tracking-widest">Lógica de Reuso</h3>
+             </div>
+             <p className="text-xs text-indigo-100 leading-relaxed font-medium">Vagas ocupadas por novo contratado vigoram apenas pelo tempo remanescente. O sistema bloqueia provimentos que excedam o saldo histórico do posto individual.</p>
+             <div className="mt-6 pt-4 border-t border-indigo-500 flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase">Substituições no filtro:</span>
+                <span className="text-xl font-black">{generalStats.replacementsCount}</span>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-        const MainApp = () => {
-            const [user, setUser] = useState(null);
-            const [tab, setTab] = useState('dashboard');
-            const [vacancies, setVacancies] = useState(() => JSON.parse(localStorage.getItem('sistemp_v') || JSON.stringify(INITIAL_VACANCIES)));
-            const [status, setStatus] = useState('idle');
-            const lastUpdate = useRef(null);
-
-            const sync = useCallback(async () => {
-                const cfg = JSON.parse(localStorage.getItem('sistemp_cloud_config') || '{}');
-                if (!cfg.url) return;
-                try {
-                    const sb = createClient(cfg.url, cfg.key);
-                    const { data } = await sb.from('sistemp_data').select('*').single();
-                    if (data && data.updated_at !== lastUpdate.current) {
-                        setVacancies(data.vacancies || []);
-                        lastUpdate.current = data.updated_at;
-                    }
-                    setStatus('connected');
-                } catch (e) { setStatus('error'); }
-            }, []);
-
-            useEffect(() => { sync(); }, [sync]);
-            useEffect(() => { localStorage.setItem('sistemp_v', JSON.stringify(vacancies)); }, [vacancies]);
-
-            if (!user) return <LoginView onLogin={setUser} />;
-
-            return (
-                <div className="flex h-screen overflow-hidden">
-                    <aside className="w-72 bg-slate-900 text-white p-8 flex flex-col space-y-12">
-                        <div className="flex items-center space-x-3"><ShieldCheck className="text-blue-500" size={36} /><span className="font-black text-3xl tracking-tighter">SisTemp</span></div>
-                        <nav className="flex-1 space-y-3">
-                            <button onClick={() => setTab('dashboard')} className={`w-full flex items-center p-4 rounded-2xl transition-all ${tab === 'dashboard' ? 'bg-blue-600 shadow-xl shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" /> <span className="font-bold">Painel</span></button>
-                            <button onClick={() => setTab('vacancies')} className={`w-full flex items-center p-4 rounded-2xl transition-all ${tab === 'vacancies' ? 'bg-blue-600 shadow-xl shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800'}`}><Building2 className="mr-3" /> <span className="font-bold">Vagas</span></button>
-                            <button onClick={() => setTab('settings')} className={`w-full flex items-center p-4 rounded-2xl transition-all ${tab === 'settings' ? 'bg-indigo-600 shadow-xl shadow-indigo-900/40' : 'text-slate-400 hover:bg-slate-800'}`}><Zap className="mr-3" /> <span className="font-bold">Nuvem</span></button>
-                        </nav>
-                        <button onClick={() => setUser(null)} className="flex items-center p-4 rounded-2xl text-red-400 hover:bg-red-400/10 font-bold transition-all"><LogOut className="mr-3" /> Sair</button>
-                    </aside>
-                    <main className="flex-1 overflow-y-auto custom-scrollbar">
-                        <header className="bg-white/80 backdrop-blur-md border-b p-8 flex justify-between items-center sticky top-0 z-20">
-                            <div className="flex items-center space-x-4">
-                                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">{tab}</h2>
-                                {status === 'connected' && (
-                                    <div className="flex items-center bg-green-50 text-green-600 px-5 py-2 rounded-full border border-green-200">
-                                        <div className="pulse-ring mr-3"><Zap size={14} className="fill-green-600" /></div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest">Ao Vivo</span>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Data: {new Date().toLocaleDateString('pt-BR')}</div>
-                        </header>
-                        <div className="p-12 max-w-6xl mx-auto">
-                            {tab === 'dashboard' ? <Dashboard vacancies={vacancies} /> : 
-                             tab === 'settings' ? <SettingsView status={status} onSync={sync} /> :
-                             <div className="text-center py-20 text-slate-300 italic">Módulo em carregamento...</div>}
-                        </div>
-                    </main>
-                </div>
-            );
-        };
-
-        createRoot(document.getElementById('root')).render(<MainApp />);
-    </script>
-</body>
-</html>
+export default ReportsView;
