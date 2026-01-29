@@ -1,13 +1,14 @@
+
 import React, { useState } from 'react';
 import { UserRole, User } from '../types';
-import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info, Briefcase, Eye } from 'lucide-react';
+import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info } from 'lucide-react';
 
 interface LoginViewProps {
   users: User[];
   onLogin: (user: User) => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
+const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,16 +17,20 @@ const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
     e.preventDefault();
     setError('');
 
-    // Procura o usuário ignorando maiúsculas/minúsculas para evitar erros de digitação
-    const foundUser = users.find(u => 
-        u.username.toLowerCase() === username.toLowerCase() && 
-        u.password === password
+    const cleanUser = username.trim().toLowerCase();
+    const cleanPass = password.trim();
+
+    // Procura o usuário garantindo que a lista não esteja nula/vazia
+    const foundUser = (users || []).find(u => 
+        u.username.toLowerCase() === cleanUser && 
+        u.password === cleanPass
     );
     
     if (foundUser) {
       onLogin(foundUser);
     } else {
       setError('Credenciais inválidas. Verifique seu login e senha.');
+      console.warn("Tentativa de login falhou. Usuários carregados:", users.length);
     }
   };
 
@@ -89,13 +94,12 @@ const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
             </button>
           </form>
 
-          {/* Dica de Acesso Padrão - CORRIGIDA */}
           <div className="mt-8 space-y-3">
             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start space-x-3">
                 <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-[10px] space-y-1">
                     <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Inicial</p>
-                    <p className="text-blue-700/70">Use um dos logins abaixo para entrar pela primeira vez:</p>
+                    <p className="text-blue-700/70">Logins padrão de fábrica:</p>
                     <div className="pt-1 flex flex-col space-y-0.5 font-bold text-blue-800">
                         <span className="flex justify-between">ADMIN: <span>admin / 123</span></span>
                         <span className="flex justify-between">GESTOR RH: <span>rh / 123</span></span>
@@ -112,20 +116,20 @@ const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
              <button 
                 type="button"
                 onClick={() => {
-                    if(confirm("Deseja resetar o banco de dados local? Isso apagará sessões antigas e restaurará os logins padrão.")) {
+                    if(confirm("Deseja resetar o banco de dados local? Isso apagará as configurações de nuvem e restaurará os logins padrão imediatamente.")) {
                         localStorage.clear();
                         window.location.reload();
                     }
                 }}
                 className="mt-4 text-[8px] font-black uppercase text-slate-300 hover:text-red-400 transition-colors"
              >
-                Resetar Cache Local
+                Resetar Cache Local (Correção de Acesso)
              </button>
           </div>
         </div>
         
         <p className="text-center text-slate-600 text-[10px] font-bold uppercase mt-8 tracking-widest opacity-50">
-          SisTemp v1.7.0 • Núcleo de Gestão de Pessoas
+          SisTemp v1.7.5 • Núcleo de Gestão de Pessoas
         </p>
       </div>
     </div>
