@@ -26,15 +26,17 @@ const DEFAULT_PROFILES = ['Professor Substituto', 'Técnico Especializado', 'Pes
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'syncing' | 'error' | 'connected'>('idle');
+  
+  // Controle de Sincronização
   const lastUpdateRef = useRef<string | null>(null);
   const isUpdatingFromRemote = useRef(false);
-  const lastLocalSaveTime = useRef<number>(0);
+  const isDirty = useRef(false);
+  const lastChangeTimestamp = useRef<number>(0);
 
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_users');
-      if (!saved) return DEFAULT_USERS;
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : DEFAULT_USERS;
     } catch { return DEFAULT_USERS; }
   });
 
@@ -50,16 +52,14 @@ const App: React.FC = () => {
   const [vacancies, setVacancies] = useState<Vacancy[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_vacancies');
-      if (!saved) return INITIAL_VACANCIES;
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : INITIAL_VACANCIES;
     } catch { return INITIAL_VACANCIES; }
   });
 
   const [parameters, setParameters] = useState<LegalParameter[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_parameters');
-      if (!saved) return INITIAL_PARAMETERS;
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : INITIAL_PARAMETERS;
     } catch { return INITIAL_PARAMETERS; }
   });
 
@@ -68,11 +68,7 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_agencies');
       if (!saved) return [DEFAULT_AGENCY];
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        const filtered = parsed.filter(a => a !== DEFAULT_AGENCY);
-        return [DEFAULT_AGENCY, ...filtered];
-      }
-      return [DEFAULT_AGENCY];
+      return Array.isArray(parsed) ? [DEFAULT_AGENCY, ...parsed.filter(a => a !== DEFAULT_AGENCY)] : [DEFAULT_AGENCY];
     } catch { return [DEFAULT_AGENCY]; }
   });
 
@@ -81,37 +77,37 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_units');
       if (!saved) return [DEFAULT_UNIT];
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        const filtered = parsed.filter(u => u !== DEFAULT_UNIT);
-        return [DEFAULT_UNIT, ...filtered];
-      }
-      return [DEFAULT_UNIT];
+      return Array.isArray(parsed) ? [DEFAULT_UNIT, ...parsed.filter(u => u !== DEFAULT_UNIT)] : [DEFAULT_UNIT];
     } catch { return [DEFAULT_UNIT]; }
   });
 
   const [profiles, setProfiles] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_profiles');
-      if (!saved) return DEFAULT_PROFILES;
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : DEFAULT_PROFILES;
     } catch { return DEFAULT_PROFILES; }
   });
 
   const [convocations, setConvocations] = useState<ConvokedPerson[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_convocations');
-      if (!saved) return INITIAL_CONVOKED;
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : INITIAL_CONVOKED;
     } catch { return INITIAL_CONVOKED; }
   });
 
   const [logs, setLogs] = useState<AuditLog[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_logs');
-      if (!saved) return [];
-      return JSON.parse(saved);
+      return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+
+  // Função para marcar estado como alterado localmente (Dirty)
+  const markAsDirty = useCallback(() => {
+    if (isUpdatingFromRemote.current) return;
+    isDirty.current = true;
+    lastChangeTimestamp.current = Date.now();
+  }, []);
 
   const addAuditLog = useCallback((action: string, details: string) => {
     if (!currentUser) return;
@@ -122,8 +118,11 @@ const App: React.FC = () => {
       action,
       details
     };
-    setLogs(prev => [newLog, ...prev].slice(0, 1000));
-  }, [currentUser]);
+    setLogs(prev => {
+        markAsDirty();
+        return [newLog, ...prev].slice(0, 1000);
+    });
+  }, [currentUser, markAsDirty]);
 
   const saveToCloud = useCallback(async (payload: any) => {
     if (isUpdatingFromRemote.current) return;
@@ -140,7 +139,7 @@ const App: React.FC = () => {
       
       if (!error) {
           lastUpdateRef.current = newTime;
-          lastLocalSaveTime.current = Date.now();
+          isDirty.current = false; // Sucesso no salvamento, nuvem está sincronizada com local
           setCloudStatus('connected');
       } else {
           setCloudStatus('error');
@@ -151,8 +150,8 @@ const App: React.FC = () => {
   }, []);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
-    // Aumentado para 10s para garantir que o Supabase processou o último salvamento local
-    if (Date.now() - lastLocalSaveTime.current < 10000) return;
+    // Se houve mudança local nos últimos 15 segundos, ignore a nuvem para evitar sobrescrita
+    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 15000)) return;
     
     try {
       const configRaw = localStorage.getItem('sistemp_cloud_config');
@@ -168,20 +167,16 @@ const App: React.FC = () => {
         isUpdatingFromRemote.current = true;
         if (data.vacancies) setVacancies(data.vacancies);
         if (data.parameters) setParameters(data.parameters);
-        if (data.agencies) {
-          const filtered = data.agencies.filter((a: string) => a !== DEFAULT_AGENCY);
-          setAgencies([DEFAULT_AGENCY, ...filtered]);
-        }
-        if (data.units) {
-          const filtered = data.units.filter((u: string) => u !== DEFAULT_UNIT);
-          setUnits([DEFAULT_UNIT, ...filtered]);
-        }
+        if (data.agencies) setAgencies([DEFAULT_AGENCY, ...data.agencies.filter((a:any) => a !== DEFAULT_AGENCY)]);
+        if (data.units) setUnits([DEFAULT_UNIT, ...data.units.filter((u:any) => u !== DEFAULT_UNIT)]);
         if (data.profiles) setProfiles(data.profiles);
         if (data.convocations) setConvocations(data.convocations);
         if (data.users) setUsers(data.users);
         if (data.logs) setLogs(data.logs);
+        
         lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
+        // Pequeno delay para garantir que os estados React foram aplicados
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
       }
       setCloudStatus('connected');
     } catch (e) {
@@ -189,6 +184,7 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Monitorar mudanças e salvar
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem('sistemp_vacancies', JSON.stringify(vacancies));
@@ -201,10 +197,9 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
       
       if (!isUpdatingFromRemote.current) {
-        lastLocalSaveTime.current = Date.now();
         saveToCloud({ vacancies, parameters, agencies, units, profiles, convocations, users, logs });
       }
-    }, 800); // Debounce um pouco maior para evitar spam
+    }, 1000);
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
 
@@ -213,6 +208,15 @@ const App: React.FC = () => {
     const interval = setInterval(() => loadFromCloud(true), 20000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
+
+  // Invólucros dos setters para marcar como Dirty
+  const wrappedSetVacancies = (val: any) => { markAsDirty(); setVacancies(val); };
+  const wrappedSetParameters = (val: any) => { markAsDirty(); setParameters(val); };
+  const wrappedSetAgencies = (val: any) => { markAsDirty(); setAgencies(val); };
+  const wrappedSetUnits = (val: any) => { markAsDirty(); setUnits(val); };
+  const wrappedSetProfiles = (val: any) => { markAsDirty(); setProfiles(val); };
+  const wrappedSetConvocations = (val: any) => { markAsDirty(); setConvocations(val); };
+  const wrappedSetUsers = (val: any) => { markAsDirty(); setUsers(val); };
 
   if (!currentUser) {
     return <LoginView users={users} onLogin={u => {
@@ -226,16 +230,16 @@ const App: React.FC = () => {
       activeTab={activeTab} setActiveTab={setActiveTab} 
       userRole={currentUser.role} userName={currentUser.name} 
       onLogout={() => { setCurrentUser(null); localStorage.removeItem('sistemp_session_user'); }}
-      cloudStatus={cloudStatus} onSync={() => loadFromCloud()}
+      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; loadFromCloud(); }}
     >
       {(() => {
         switch (activeTab) {
           case 'dashboard': return <DashboardView vacancies={vacancies} />;
-          case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={setAgencies} setUnits={setUnits} convocations={convocations} setConvocations={setConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
-          case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={setConvocations} profiles={profiles} onLog={addAuditLog} />;
+          case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={wrappedSetVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={wrappedSetAgencies} setUnits={wrappedSetUnits} convocations={convocations} setConvocations={wrappedSetConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
+          case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={wrappedSetConvocations} profiles={profiles} onLog={addAuditLog} />;
           case 'reports': return <ReportsView vacancies={vacancies} convocations={convocations} />;
-          case 'settings': return <SettingsView parameters={parameters} setParameters={setParameters} agencies={agencies} setAgencies={setAgencies} units={units} setUnits={setUnits} profiles={profiles} setProfiles={setProfiles} users={users} setUsers={setUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onCloudConfigChange={() => loadFromCloud()} onLog={addAuditLog} />;
-          case 'audit': return <AuditView logs={logs} onClear={() => { setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
+          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onCloudConfigChange={() => { isDirty.current = false; loadFromCloud(); }} onLog={addAuditLog} />;
+          case 'audit': return <AuditView logs={logs} onClear={() => { markAsDirty(); setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
           default: return <DashboardView vacancies={vacancies} />;
         }
       })()}
