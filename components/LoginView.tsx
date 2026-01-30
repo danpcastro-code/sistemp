@@ -20,8 +20,14 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
     const cleanUser = username.trim().toLowerCase();
     const cleanPass = password.trim();
 
+    if (!cleanUser || !cleanPass) {
+      setError('Preencha todos os campos.');
+      return;
+    }
+
     // Procura o usuário garantindo que a lista não esteja nula/vazia
-    const foundUser = (users || []).find(u => 
+    const currentUsers = Array.isArray(users) ? users : [];
+    const foundUser = currentUsers.find(u => 
         u.username.toLowerCase() === cleanUser && 
         u.password === cleanPass
     );
@@ -30,7 +36,7 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
       onLogin(foundUser);
     } else {
       setError('Credenciais inválidas. Verifique seu login e senha.');
-      console.warn("Tentativa de login falhou. Usuários carregados:", users.length);
+      console.warn("Tentativa de login falhou. Usuários carregados:", currentUsers.length);
     }
   };
 
@@ -99,7 +105,7 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
                 <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-[10px] space-y-1">
                     <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Inicial</p>
-                    <p className="text-blue-700/70">Logins padrão de fábrica:</p>
+                    <p className="text-blue-700/70">Logins padrão ativos no sistema:</p>
                     <div className="pt-1 flex flex-col space-y-0.5 font-bold text-blue-800">
                         <span className="flex justify-between">ADMIN: <span>admin / 123</span></span>
                         <span className="flex justify-between">GESTOR RH: <span>rh / 123</span></span>
@@ -116,14 +122,15 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
              <button 
                 type="button"
                 onClick={() => {
-                    if(confirm("Deseja resetar o banco de dados local? Isso apagará as configurações de nuvem e restaurará os logins padrão imediatamente.")) {
-                        localStorage.clear();
+                    if(confirm("Deseja resetar as credenciais locais? Isso forçará o carregamento dos usuários padrão (admin, rh, consulta) e pode resolver problemas de acesso.")) {
+                        localStorage.removeItem('sistemp_users');
+                        localStorage.removeItem('sistemp_session_user');
                         window.location.reload();
                     }
                 }}
                 className="mt-4 text-[8px] font-black uppercase text-slate-300 hover:text-red-400 transition-colors"
              >
-                Resetar Cache Local (Correção de Acesso)
+                Resetar Credenciais de Acesso
              </button>
           </div>
         </div>
