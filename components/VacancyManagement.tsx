@@ -50,7 +50,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     vacancies.find(v => v.id === selectedVacancyId) || null
   , [selectedVacancyId, vacancies]);
 
-  // Lógica de equivalência robusta para Perfis Profissionais (Case-insensitive e sem acentos)
   const sortedPendingCandidates = useMemo(() => {
     if (!selectedVacancy) return [];
     const vacancyTypeNormalized = normalizeString(selectedVacancy.type);
@@ -281,14 +280,14 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                     <ChevronRight size={16} className="rotate-180 mr-1 group-hover:mr-2 transition-all"/> Voltar para Lista
                 </button>
                 {selectedSlotFilter !== null && (
-                  <button onClick={() => setSelectedSlotFilter(null)} className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl border border-white/10">
-                      <FilterX size={14} className="mr-2"/> Limpar Seleção (Ver Todos)
+                  <button onClick={() => setSelectedSlotFilter(null)} className="px-4 py-1.5 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-all flex items-center shadow-lg border border-red-500/10">
+                      <FilterX size={14} className="mr-2"/> Excluir Seleção (Ver Todos)
                   </button>
                 )}
             </div>
             <div className="flex items-center space-x-3 bg-slate-900 px-5 py-2.5 rounded-2xl text-white shadow-lg border border-white/5">
                 <Clock size={16} className="text-blue-400" />
-                <span className="text-[11px] font-black uppercase tracking-wider">GRUPO: {selectedVacancy.maxTermDays} DIAS MAX.</span>
+                <span className="text-[11px] font-black uppercase tracking-wider">POSTO: {selectedVacancy.maxTermDays} DIAS MAX.</span>
             </div>
           </div>
           
@@ -326,7 +325,8 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                   return (
                     <button 
                       key={idx}
-                      onClick={() => {
+                      onClick={(e) => {
+                          e.preventDefault();
                           if (selectedSlotFilter === idx) {
                               setSelectedSlotFilter(null);
                           } else {
@@ -386,7 +386,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                     </td>
                                     <td className="px-8 py-6">
                                         <div className="flex items-center text-slate-500 space-x-2">
-                                            {/* Fix missing Calendar icon */}
                                             <Calendar size={12} className="opacity-40" />
                                             <span>{formatDisplayDate(occ.startDate)}</span>
                                             <span className="font-bold">→</span>
@@ -394,7 +393,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-center">
-                                        <span className="font-bold text-slate-400 text-[10px]">{selectedVacancy.maxTermDays} dias</span>
+                                        <span className="font-black text-slate-800 text-[11px]">{selectedVacancy.maxTermDays} dias</span>
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         <span className={`font-black text-[13px] ${remDaysContract <= 30 ? 'text-red-500' : 'text-slate-800'}`}>
@@ -446,7 +445,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         </div>
       )}
 
-      {/* MODAIS: Garantindo que fiquem fora da estrutura principal para evitar conflitos de Z-Index */}
       {showExtendModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
@@ -490,7 +488,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         </div>
       )}
 
-      {/* MODAL: Novo Grupo de Vagas */}
       {showAddModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
              <div className="bg-white rounded-[3rem] max-w-lg w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
@@ -540,10 +537,9 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
           </div>
       )}
 
-      {/* MODAL: Provimento de Posto */}
       {showAddContractModal && targetSlotInfo && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-md w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
+          <div className="bg-white rounded-[3rem] max-w-md w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
             <button onClick={() => setShowAddContractModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h2 className="text-3xl font-black mb-10 text-slate-800 uppercase tracking-tighter">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
             <form onSubmit={handleAddContract} className="space-y-8">
