@@ -22,18 +22,13 @@ const DEFAULT_USERS: User[] = [
   { id: '3', name: 'Consulta Externa', username: 'consulta', password: '123', role: UserRole.CONSULTANT }
 ];
 
-// Função para garantir que os usuários padrão sempre existam na lista
 const mergeWithDefaultUsers = (incomingUsers: any[]): User[] => {
   const list = Array.isArray(incomingUsers) ? incomingUsers : [];
   const merged = [...DEFAULT_USERS];
-  
   list.forEach(u => {
     const exists = merged.some(d => d.username.toLowerCase() === u.username.toLowerCase());
-    if (!exists && u.username) {
-      merged.push(u);
-    }
+    if (!exists && u.username) merged.push(u);
   });
-  
   return merged;
 };
 
@@ -52,8 +47,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_users');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return mergeWithDefaultUsers(parsed);
+      return mergeWithDefaultUsers(saved ? JSON.parse(saved) : []);
     } catch { return DEFAULT_USERS; }
   });
 
@@ -83,18 +77,16 @@ const App: React.FC = () => {
   const [agencies, setAgencies] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_agencies');
-      if (!saved) return [DEFAULT_AGENCY];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? [DEFAULT_AGENCY, ...parsed] : [DEFAULT_AGENCY];
+      const parsed = saved ? JSON.parse(saved) : [DEFAULT_AGENCY];
+      return Array.isArray(parsed) ? parsed : [DEFAULT_AGENCY];
     } catch { return [DEFAULT_AGENCY]; }
   });
 
   const [units, setUnits] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_units');
-      if (!saved) return [DEFAULT_UNIT];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? [DEFAULT_UNIT, ...parsed] : [DEFAULT_UNIT];
+      const parsed = saved ? JSON.parse(saved) : [DEFAULT_UNIT];
+      return Array.isArray(parsed) ? parsed : [DEFAULT_UNIT];
     } catch { return [DEFAULT_UNIT]; }
   });
 
@@ -128,13 +120,16 @@ const App: React.FC = () => {
       const newTime = new Date().toISOString();
       const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs };
       
-      const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime });
+      // Upsert garantindo ID 1
+      const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime }, { onConflict: 'id' });
       
       if (!error) {
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
+          console.debug("SisTemp: Sincronização de saída concluída.");
       } else {
+          console.error("SisTemp: Erro Supabase ao salvar:", error);
           setCloudStatus('error');
       }
     } catch (e) {
@@ -152,12 +147,9 @@ const App: React.FC = () => {
       
       if (!error && data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
-        
-        // Aplica a fusão de segurança nos usuários recebidos da nuvem
-        if (data.users) {
-          setUsers(mergeWithDefaultUsers(data.users));
-        }
-        
+        console.debug("SisTemp: Carregando dados atualizados da nuvem...");
+
+        if (data.users) setUsers(mergeWithDefaultUsers(data.users));
         if (data.vacancies) setVacancies(data.vacancies);
         if (data.parameters) setParameters(data.parameters);
         if (data.profiles) setProfiles(data.profiles);
@@ -175,6 +167,7 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Salvamento Automático (Debounce de 1 segundo para maior agilidade)
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem('sistemp_users', JSON.stringify(users));
@@ -187,13 +180,25 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
       
       if (isDirty.current) saveToCloud();
-    }, 2000);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
 
+  // Prevenção de perda de dados ao fechar
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isDirty.current) {
+        localStorage.setItem('sistemp_vacancies', JSON.stringify(vacancies));
+        // Nota: Gravação em rede no beforeunload é incerta, o localStorage garante a volta.
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [vacancies]);
+
   useEffect(() => {
     loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 15000);
+    const interval = setInterval(() => loadFromCloud(true), 10000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
 
