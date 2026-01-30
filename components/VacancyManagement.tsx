@@ -287,7 +287,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
             </div>
             <div className="flex items-center space-x-3 bg-slate-900 px-5 py-2.5 rounded-2xl text-white shadow-lg border border-white/5">
                 <Clock size={16} className="text-blue-400" />
-                <span className="text-[11px] font-black uppercase tracking-wider">GRUPO: {selectedVacancy.maxTermDays} DIAS MAX.</span>
+                <span className="text-[11px] font-black uppercase tracking-wider">POSTO: {selectedVacancy.maxTermDays} DIAS MAX.</span>
             </div>
           </div>
           
@@ -327,6 +327,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                       key={idx}
                       onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           if (selectedSlotFilter === idx) {
                               setSelectedSlotFilter(null);
                           } else {
@@ -360,7 +361,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                             <th className="px-8 py-6">Posto / Ciclo</th>
                             <th className="px-8 py-6">Contratado / Concorrência</th>
                             <th className="px-8 py-6">Período de Atuação</th>
-                            <th className="px-8 py-6 text-center">Tempo Limite (Posto)</th>
+                            <th className="px-8 py-6 text-center">Data Limite (Fatal)</th>
                             <th className="px-8 py-6 text-center">Saldo Restante</th>
                             <th className="px-8 py-6 text-right">Situação</th>
                             <th className="px-8 py-6 text-right">Ações</th>
@@ -369,7 +370,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                     <tbody className="divide-y divide-slate-50 text-[11px]">
                         {displayedOccupations.map(occ => {
                             const remDaysContract = Math.max(0, differenceInDays(parseISO(occ.endDate), startOfDay(new Date())));
-                            const remDaysPosto = getSlotRemainingDays(selectedVacancy, occ.slotIndex);
                             const isActive = occ.status === ContractStatus.ACTIVE;
                             return (
                                 <tr key={occ.id} className="hover:bg-slate-50 transition-colors group">
@@ -395,8 +395,8 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         <div className="flex flex-col items-center">
-                                            <span className="font-black text-slate-800 text-[11px]">{remDaysPosto} dias</span>
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Saldo do Posto</span>
+                                            <span className="font-black text-slate-800 text-[11px]">{formatDisplayDate(occ.projectedFinalDate)}</span>
+                                            <span className="text-[8px] font-black text-red-500 uppercase tracking-widest mt-0.5">Limite Máximo</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-center">
