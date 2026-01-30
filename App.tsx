@@ -13,7 +13,6 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog } fro
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// CREDENCIAIS NATIVAS DO SISTEMA - PERMANENTES
 const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
 const SUPABASE_KEY = "sb_publishable_I6orZsgeBZX0QRvhrQ5d-A_Jng0xH2s";
 
@@ -72,7 +71,7 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_agencies');
       if (!saved) return [DEFAULT_AGENCY];
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_AGENCY, ...parsed.filter(a => a !== DEFAULT_AGENCY)] : [DEFAULT_AGENCY];
+      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_AGENCY, ...parsed] : [DEFAULT_AGENCY];
     } catch { return [DEFAULT_AGENCY]; }
   });
 
@@ -81,7 +80,7 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_units');
       if (!saved) return [DEFAULT_UNIT];
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_UNIT, ...parsed.filter(u => u !== DEFAULT_UNIT)] : [DEFAULT_UNIT];
+      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_UNIT, ...parsed] : [DEFAULT_UNIT];
     } catch { return [DEFAULT_UNIT]; }
   });
 
@@ -147,8 +146,8 @@ const App: React.FC = () => {
   }, []);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
-    // Aumentado para 30s de bloqueio após alteração local para garantir que o save chegue na nuvem
-    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 30000)) return;
+    // Bloqueia carregamento se houver alteração local pendente (60s de segurança)
+    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 60000)) return;
     
     try {
       if (!isSilent) setCloudStatus('syncing');
@@ -158,18 +157,19 @@ const App: React.FC = () => {
       if (!error && data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
         
+        // Verificação estrita para evitar sobrescrever com arrays vazios se a nuvem falhar
         if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
-        if (data.vacancies && Array.isArray(data.vacancies)) setVacancies(data.vacancies);
-        if (data.parameters && Array.isArray(data.parameters)) setParameters(data.parameters);
+        if (data.vacancies && Array.isArray(data.vacancies) && data.vacancies.length > 0) setVacancies(data.vacancies);
+        if (data.parameters && Array.isArray(data.parameters) && data.parameters.length > 0) setParameters(data.parameters);
         if (data.profiles && Array.isArray(data.profiles) && data.profiles.length > 0) setProfiles(data.profiles);
-        if (data.convocations && Array.isArray(data.convocations)) setConvocations(data.convocations);
+        if (data.convocations && Array.isArray(data.convocations) && data.convocations.length > 0) setConvocations(data.convocations);
         if (data.logs && Array.isArray(data.logs)) setLogs(data.logs);
         
-        if (data.agencies && Array.isArray(data.agencies)) setAgencies([DEFAULT_AGENCY, ...data.agencies.filter((a:any) => a !== DEFAULT_AGENCY)]);
-        if (data.units && Array.isArray(data.units)) setUnits([DEFAULT_UNIT, ...data.units.filter((u:any) => u !== DEFAULT_UNIT)]);
+        if (data.agencies && Array.isArray(data.agencies)) setAgencies(data.agencies);
+        if (data.units && Array.isArray(data.units)) setUnits(data.units);
         
         lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1200);
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 2000);
       }
       setCloudStatus('connected');
     } catch (e) {
@@ -188,16 +188,16 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_convocations', JSON.stringify(convocations));
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
       
-      if (!isUpdatingFromRemote.current) {
+      if (!isUpdatingFromRemote.current && isDirty.current) {
         saveToCloud({ vacancies, parameters, agencies, units, profiles, convocations, users, logs });
       }
-    }, 1500);
+    }, 2000);
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
 
   useEffect(() => {
     loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 40000);
+    const interval = setInterval(() => loadFromCloud(true), 30000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
 
@@ -221,7 +221,7 @@ const App: React.FC = () => {
       activeTab={activeTab} setActiveTab={setActiveTab} 
       userRole={currentUser.role} userName={currentUser.name} 
       onLogout={() => { setCurrentUser(null); localStorage.removeItem('sistemp_session_user'); }}
-      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; loadFromCloud(); }}
+      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; lastChangeTimestamp.current = 0; loadFromCloud(); }}
     >
       {(() => {
         switch (activeTab) {
