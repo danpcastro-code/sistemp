@@ -13,7 +13,7 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog } fro
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// CREDENCIAIS NATIVAS DO SISTEMA
+// CREDENCIAIS NATIVAS DO SISTEMA - PERMANENTES
 const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
 const SUPABASE_KEY = "sb_publishable_I6orZsgeBZX0QRvhrQ5d-A_Jng0xH2s";
 
@@ -25,7 +25,7 @@ const DEFAULT_USERS: User[] = [
 
 const DEFAULT_AGENCY = 'Ministério da Gestão e da Inovação em Serviços Públicos';
 const DEFAULT_UNIT = 'Sede Central';
-const DEFAULT_PROFILES = ['Professor Substituto', 'Técnico Especializado', 'Pesquisador Visitante'];
+const DEFAULT_PROFILES = ['Professor Substituto', 'Técnico Especializado', 'Pesquisador Visitante', 'Administrador'];
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -88,7 +88,8 @@ const App: React.FC = () => {
   const [profiles, setProfiles] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_profiles');
-      return saved ? JSON.parse(saved) : DEFAULT_PROFILES;
+      const parsed = saved ? JSON.parse(saved) : DEFAULT_PROFILES;
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PROFILES;
     } catch { return DEFAULT_PROFILES; }
   });
 
@@ -132,9 +133,7 @@ const App: React.FC = () => {
     try {
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
       const newTime = new Date().toISOString();
-      
       const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime });
-      
       if (!error) {
           lastUpdateRef.current = newTime;
           isDirty.current = false;
@@ -148,8 +147,8 @@ const App: React.FC = () => {
   }, []);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
-    // Ação local recente bloqueia download da nuvem por 20 segundos para garantir persistência
-    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 20000)) return;
+    // Aumentado para 30s de bloqueio após alteração local para garantir que o save chegue na nuvem
+    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 30000)) return;
     
     try {
       if (!isSilent) setCloudStatus('syncing');
@@ -162,7 +161,7 @@ const App: React.FC = () => {
         if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
         if (data.vacancies && Array.isArray(data.vacancies)) setVacancies(data.vacancies);
         if (data.parameters && Array.isArray(data.parameters)) setParameters(data.parameters);
-        if (data.profiles && Array.isArray(data.profiles)) setProfiles(data.profiles);
+        if (data.profiles && Array.isArray(data.profiles) && data.profiles.length > 0) setProfiles(data.profiles);
         if (data.convocations && Array.isArray(data.convocations)) setConvocations(data.convocations);
         if (data.logs && Array.isArray(data.logs)) setLogs(data.logs);
         
@@ -170,7 +169,7 @@ const App: React.FC = () => {
         if (data.units && Array.isArray(data.units)) setUnits([DEFAULT_UNIT, ...data.units.filter((u:any) => u !== DEFAULT_UNIT)]);
         
         lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1200);
       }
       setCloudStatus('connected');
     } catch (e) {
@@ -198,7 +197,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 30000);
+    const interval = setInterval(() => loadFromCloud(true), 40000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
 
