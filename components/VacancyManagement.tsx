@@ -496,7 +496,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       )}
 
       {showAddModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
              <div className="bg-white rounded-[3rem] max-w-lg w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
                 <button onClick={() => setShowAddModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={24}/></button>
                 <h2 className="text-3xl font-black text-slate-800 mb-10 flex items-center tracking-tighter uppercase"><Building2 size={32} className="mr-5 text-blue-600" /> Novo Grupo</h2>
