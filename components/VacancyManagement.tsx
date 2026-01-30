@@ -50,6 +50,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     vacancies.find(v => v.id === selectedVacancyId) || null
   , [selectedVacancyId, vacancies]);
 
+  // Lógica de equivalência robusta para Perfis Profissionais (Mesmo que Administrador != ADMINISTRADOR)
   const sortedPendingCandidates = useMemo(() => {
     if (!selectedVacancy) return [];
     const vacancyTypeNormalized = normalizeString(selectedVacancy.type);
@@ -58,7 +59,9 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       .filter(c => {
           if (c.status !== ConvocationStatus.PENDING) return false;
           const candidateProfileNormalized = normalizeString(c.profile || "");
-          return candidateProfileNormalized.includes(vacancyTypeNormalized) || 
+          // Verifica se o perfil da vaga está contido no perfil do candidato ou vice-versa, normalizados
+          return candidateProfileNormalized === vacancyTypeNormalized || 
+                 candidateProfileNormalized.includes(vacancyTypeNormalized) || 
                  vacancyTypeNormalized.includes(candidateProfileNormalized);
       })
       .sort((a, b) => a.ranking - b.ranking);
@@ -150,6 +153,20 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     onLog('PROVIMENTO', `${person.name} vinculado ao posto #${targetSlotInfo.slotIndex}.`);
   };
 
+  // Funções de gatilho para abertura imediata dos modais
+  const triggerExtension = (occ: Occupation) => {
+    setExtendingOccId(occ.id);
+    setExtNewEndDate(format(addYears(parseISO(occ.endDate), 1), 'yyyy-MM-dd'));
+    setExtAmendmentTerm('');
+    setShowExtendModal(true);
+  };
+
+  const triggerRescision = (occ: Occupation) => {
+    setRescindingOccId(occ.id);
+    setRescindDate(format(new Date(), 'yyyy-MM-dd'));
+    setShowRescindModal(true);
+  };
+
   const handleExtendContract = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVacancy || !extendingOccId) return;
@@ -222,9 +239,9 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
           <div className="flex justify-between items-center gap-4">
             <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input type="text" placeholder="Código, Órgão ou Unidade..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 shadow-sm transition-all" />
+              <input type="text" placeholder="Código, Órgão ou Unidade..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 shadow-sm transition-all font-medium" />
             </div>
-            {canEdit && <button onClick={() => setShowAddModal(true)} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold flex items-center shadow-lg active:scale-95 transition-all"><Plus size={18} className="mr-2"/>Novo Grupo de Vagas</button>}
+            {canEdit && <button onClick={() => setShowAddModal(true)} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold flex items-center shadow-lg active:scale-95 transition-all text-xs uppercase tracking-widest"><Plus size={18} className="mr-2"/>Novo Grupo de Vagas</button>}
           </div>
           <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
             <table className="w-full text-left">
@@ -350,7 +367,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                         <span className="block text-[8px] font-black uppercase text-slate-400 mt-1">{occ.competition}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-slate-400">{formatDisplayDate(occ.startDate)} a</span>
+                                        <span className="text-slate-400 font-medium">{formatDisplayDate(occ.startDate)} a</span>
                                         <span className="font-bold text-slate-800 ml-1">{formatDisplayDate(occ.endDate)}</span>
                                     </td>
                                     <td className="px-6 py-4 text-center font-black">{remDaysContract} dias</td>
@@ -358,8 +375,20 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                     <td className="px-6 py-4 text-right">
                                         {isActive && canEdit && (
                                             <div className="flex justify-end space-x-2">
-                                                <button onClick={() => { setExtendingOccId(occ.id); setExtNewEndDate(format(addYears(parseISO(occ.endDate), 1), 'yyyy-MM-dd')); setShowExtendModal(true); }} className="p-2 border rounded-lg hover:bg-blue-600 hover:text-white" title="Prorrogar"><FastForward size={14} /></button>
-                                                <button onClick={() => { setRescindingOccId(occ.id); setRescindDate(format(new Date(), 'yyyy-MM-dd')); setShowRescindModal(true); }} className="p-2 border rounded-lg hover:bg-red-500 hover:text-white" title="Rescindir"><Trash2 size={14} /></button>
+                                                <button 
+                                                  onClick={() => triggerExtension(occ)} 
+                                                  className="p-2 border border-slate-200 rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all text-slate-400" 
+                                                  title="Prorrogar"
+                                                >
+                                                  <FastForward size={14} />
+                                                </button>
+                                                <button 
+                                                  onClick={() => triggerRescision(occ)} 
+                                                  className="p-2 border border-slate-200 rounded-lg hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-slate-400" 
+                                                  title="Rescindir"
+                                                >
+                                                  <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         )}
                                     </td>
@@ -377,19 +406,19 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       {showExtendModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 shadow-2xl animate-in zoom-in duration-200">
-            <h2 className="text-xl font-black mb-6 text-slate-800">Prorrogar Contrato</h2>
+            <h2 className="text-xl font-black mb-6 text-slate-800 uppercase tracking-tight">Prorrogar Contrato</h2>
             <form onSubmit={handleExtendContract} className="space-y-4">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nº Termo Aditivo</label>
-                <input value={extAmendmentTerm} onChange={e => setExtAmendmentTerm(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none" placeholder="Ex: TA 01/2024"/>
+                <input value={extAmendmentTerm} onChange={e => setExtAmendmentTerm(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none font-bold" placeholder="Ex: TA 01/2024"/>
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nova Data Final</label>
-                <input type="date" value={extNewEndDate} onChange={e => setExtNewEndDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none"/>
+                <input type="date" value={extNewEndDate} onChange={e => setExtNewEndDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none font-bold"/>
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowExtendModal(false)} className="px-6 py-3 font-bold text-slate-400 text-xs">Cancelar</button>
-                <button type="submit" className="px-8 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg">Confirmar Prorrogação</button>
+                <button type="button" onClick={() => setShowExtendModal(false)} className="px-6 py-3 font-bold text-slate-400 text-[10px] uppercase tracking-widest">Cancelar</button>
+                <button type="submit" className="px-8 py-3 bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-lg">Confirmar</button>
               </div>
             </form>
           </div>
@@ -399,17 +428,17 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       {/* MODAL: RESCISÃO */}
       {showRescindModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 shadow-2xl animate-in zoom-in duration-200">
-            <h2 className="text-xl font-black mb-6 text-slate-800 text-red-600">Rescisão de Contrato</h2>
-            <p className="text-xs text-slate-500 mb-6 font-medium">Confirme a data do desligamento. O saldo do posto será recalculado automaticamente.</p>
+          <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 shadow-2xl animate-in zoom-in duration-200 border-2 border-red-50">
+            <h2 className="text-xl font-black mb-6 text-red-600 uppercase tracking-tight">Efetivar Rescisão</h2>
+            <p className="text-[11px] text-slate-500 mb-6 font-medium leading-relaxed">Confirme a data do desligamento. O saldo do posto será liberado para nova ocupação automaticamente.</p>
             <form onSubmit={handleRescindContract} className="space-y-4">
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data da Rescisão</label>
-                <input type="date" value={rescindDate} onChange={e => setRescindDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none"/>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data do Desligamento</label>
+                <input type="date" value={rescindDate} onChange={e => setRescindDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-xl p-3 text-sm outline-none font-bold"/>
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowRescindModal(false)} className="px-6 py-3 font-bold text-slate-400 text-xs">Cancelar</button>
-                <button type="submit" className="px-8 py-3 bg-red-600 text-white font-black text-xs rounded-xl shadow-lg">Efetivar Rescisão</button>
+                <button type="button" onClick={() => setShowRescindModal(false)} className="px-6 py-3 font-bold text-slate-400 text-[10px] uppercase tracking-widest">Cancelar</button>
+                <button type="submit" className="px-8 py-3 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-lg">Confirmar Rescisão</button>
               </div>
             </form>
           </div>
@@ -420,45 +449,45 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       {showAddModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-10 shadow-2xl animate-in zoom-in duration-200">
-                <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center tracking-tighter"><Building2 size={28} className="mr-4 text-blue-600" /> Criar Grupo de Vagas</h2>
+                <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center tracking-tighter uppercase"><Building2 size={28} className="mr-4 text-blue-600" /> Criar Grupo de Vagas</h2>
                 <form onSubmit={handleSaveVacancy} className="space-y-6">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div className="col-span-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Órgão Solicitante</label>
-                             <select name="agency" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none">
+                             <select name="agency" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                                 {agencies.map((a, i) => <option key={i} value={a}>{a}</option>)}
                              </select>
                         </div>
                         <div className="col-span-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unidade de Atuação</label>
-                             <select name="unit" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none">
+                             <select name="unit" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                                 {units.map((u, i) => <option key={i} value={u}>{u}</option>)}
                              </select>
                         </div>
                         <div>
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código Identificador</label>
-                             <input name="code" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none" placeholder="VAG-2024-001"/>
+                             <input name="code" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold" placeholder="Ex: VAG-2024-01"/>
                         </div>
                         <div>
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nº de Postos</label>
-                             <input name="quantity" type="number" required min="1" className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none" placeholder="Ex: 300"/>
+                             <input name="quantity" type="number" required min="1" className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold" placeholder="Ex: 10"/>
                         </div>
                         <div className="col-span-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amparo Legal</label>
-                             <select name="legalBase" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none">
+                             <select name="legalBase" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                                 {parameters.map(p => <option key={p.id} value={p.id}>{p.label} - {p.days} dias</option>)}
                              </select>
                         </div>
                         <div className="col-span-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Perfil Profissional</label>
-                             <select name="type" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none">
+                             <select name="type" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                                 {profiles.map((p, i) => <option key={i} value={p}>{p}</option>)}
                              </select>
                         </div>
                    </div>
                    <div className="flex justify-end gap-4 mt-10">
-                      <button type="button" onClick={() => setShowAddModal(false)} className="px-8 py-3.5 font-bold text-slate-400 uppercase text-xs">Cancelar</button>
-                      <button type="submit" className="px-12 py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all">Criar Grupo</button>
+                      <button type="button" onClick={() => setShowAddModal(false)} className="px-8 py-3.5 font-bold text-slate-400 uppercase text-[10px] tracking-[0.2em]">Cancelar</button>
+                      <button type="submit" className="px-12 py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-2xl active:scale-95 transition-all">Criar Grupo</button>
                    </div>
                 </form>
              </div>
@@ -469,8 +498,9 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       {showAddContractModal && targetSlotInfo && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-10 shadow-2xl animate-in zoom-in duration-200">
-            <h2 className="text-2xl font-black mb-8 text-slate-800">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
+            <h2 className="text-2xl font-black mb-8 text-slate-800 uppercase tracking-tight">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
             <form onSubmit={handleAddContract} className="space-y-6">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Selecionar Candidato Convocado</label>
               <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
                 {sortedPendingCandidates.length > 0 ? (
                   <>
@@ -478,16 +508,22 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                     {sortedPendingCandidates.map(p => (<option key={p.id} value={p.id}>{p.ranking}º - {p.name} ({p.competition})</option>))}
                   </>
                 ) : (
-                  <option value="">Nenhum candidato para o perfil: {selectedVacancy?.type}</option>
+                  <option value="">Nenhum candidato pendente para: {selectedVacancy?.type}</option>
                 )}
               </select>
               <div className="grid grid-cols-2 gap-5">
-                <input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
-                <input type="date" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Início</label>
+                  <input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Fim Prevista</label>
+                  <input type="date" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold"/>
+                </div>
               </div>
               <div className="flex justify-end gap-4 mt-8">
-                <button type="button" onClick={() => setShowAddContractModal(false)} className="px-8 py-4 font-bold text-slate-400 uppercase text-xs">Cancelar</button>
-                <button type="submit" disabled={sortedPendingCandidates.length === 0} className="px-12 py-4 bg-blue-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50">Contratar</button>
+                <button type="button" onClick={() => setShowAddContractModal(false)} className="px-8 py-4 font-bold text-slate-400 uppercase text-[10px] tracking-widest">Cancelar</button>
+                <button type="submit" disabled={sortedPendingCandidates.length === 0} className="px-12 py-4 bg-blue-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50">Contratar</button>
               </div>
             </form>
           </div>
