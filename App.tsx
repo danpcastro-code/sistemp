@@ -33,13 +33,11 @@ const App: React.FC = () => {
   const lastUpdateRef = useRef<string | null>(null);
   const isUpdatingFromRemote = useRef(false);
   const isDirty = useRef(false);
-  const lastChangeTimestamp = useRef<number>(0);
 
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_users');
-      const parsed = saved ? JSON.parse(saved) : DEFAULT_USERS;
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_USERS;
+      return saved ? JSON.parse(saved) : DEFAULT_USERS;
     } catch { return DEFAULT_USERS; }
   });
 
@@ -71,7 +69,7 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_agencies');
       if (!saved) return [DEFAULT_AGENCY];
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_AGENCY, ...parsed] : [DEFAULT_AGENCY];
+      return Array.isArray(parsed) ? [DEFAULT_AGENCY, ...parsed] : [DEFAULT_AGENCY];
     } catch { return [DEFAULT_AGENCY]; }
   });
 
@@ -80,15 +78,14 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('sistemp_units');
       if (!saved) return [DEFAULT_UNIT];
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? [DEFAULT_UNIT, ...parsed] : [DEFAULT_UNIT];
+      return Array.isArray(parsed) ? [DEFAULT_UNIT, ...parsed] : [DEFAULT_UNIT];
     } catch { return [DEFAULT_UNIT]; }
   });
 
   const [profiles, setProfiles] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_profiles');
-      const parsed = saved ? JSON.parse(saved) : DEFAULT_PROFILES;
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PROFILES;
+      return saved ? JSON.parse(saved) : DEFAULT_PROFILES;
     } catch { return DEFAULT_PROFILES; }
   });
 
@@ -106,48 +103,32 @@ const App: React.FC = () => {
     } catch { return []; }
   });
 
-  const markAsDirty = useCallback(() => {
-    if (isUpdatingFromRemote.current) return;
-    isDirty.current = true;
-    lastChangeTimestamp.current = Date.now();
-  }, []);
-
-  const addAuditLog = useCallback((action: string, details: string) => {
-    if (!currentUser) return;
-    const newLog: AuditLog = {
-      id: generateId(),
-      timestamp: new Date().toISOString(),
-      user: currentUser.name,
-      action,
-      details
-    };
-    setLogs(prev => {
-        markAsDirty();
-        return [newLog, ...prev].slice(0, 1000);
-    });
-  }, [currentUser, markAsDirty]);
-
-  const saveToCloud = useCallback(async (payload: any) => {
-    if (isUpdatingFromRemote.current) return;
+  const saveToCloud = useCallback(async () => {
+    if (isUpdatingFromRemote.current || !isDirty.current) return;
+    
     try {
+      setCloudStatus('syncing');
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
       const newTime = new Date().toISOString();
+      const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs };
+      
       const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime });
+      
       if (!error) {
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
+          console.error("Erro Supabase:", error);
           setCloudStatus('error');
       }
     } catch (e) {
       setCloudStatus('error');
     }
-  }, []);
+  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs]);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
-    // Bloqueia carregamento se houver alteração local pendente (60s de segurança)
-    if (isDirty.current || (Date.now() - lastChangeTimestamp.current < 60000)) return;
+    if (isDirty.current) return;
     
     try {
       if (!isSilent) setCloudStatus('syncing');
@@ -157,26 +138,25 @@ const App: React.FC = () => {
       if (!error && data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
         
-        // Verificação estrita para evitar sobrescrever com arrays vazios se a nuvem falhar
-        if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
-        if (data.vacancies && Array.isArray(data.vacancies) && data.vacancies.length > 0) setVacancies(data.vacancies);
-        if (data.parameters && Array.isArray(data.parameters) && data.parameters.length > 0) setParameters(data.parameters);
-        if (data.profiles && Array.isArray(data.profiles) && data.profiles.length > 0) setProfiles(data.profiles);
-        if (data.convocations && Array.isArray(data.convocations) && data.convocations.length > 0) setConvocations(data.convocations);
-        if (data.logs && Array.isArray(data.logs)) setLogs(data.logs);
-        
-        if (data.agencies && Array.isArray(data.agencies)) setAgencies(data.agencies);
-        if (data.units && Array.isArray(data.units)) setUnits(data.units);
+        if (data.users) setUsers(data.users);
+        if (data.vacancies) setVacancies(data.vacancies);
+        if (data.parameters) setParameters(data.parameters);
+        if (data.profiles) setProfiles(data.profiles);
+        if (data.convocations) setConvocations(data.convocations);
+        if (data.logs) setLogs(data.logs);
+        if (data.agencies) setAgencies(data.agencies);
+        if (data.units) setUnits(data.units);
         
         lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 2000);
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
       }
       setCloudStatus('connected');
     } catch (e) {
-      setCloudStatus('error');
+      if (!isSilent) setCloudStatus('error');
     }
   }, []);
 
+  // Debounce para salvamento automático
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem('sistemp_users', JSON.stringify(users));
@@ -188,18 +168,27 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_convocations', JSON.stringify(convocations));
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
       
-      if (!isUpdatingFromRemote.current && isDirty.current) {
-        saveToCloud({ vacancies, parameters, agencies, units, profiles, convocations, users, logs });
-      }
+      if (isDirty.current) saveToCloud();
     }, 2000);
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
 
+  // Carregamento inicial e polling
   useEffect(() => {
     loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 30000);
+    const interval = setInterval(() => loadFromCloud(true), 15000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
+
+  const markAsDirty = () => {
+    if (!isUpdatingFromRemote.current) isDirty.current = true;
+  };
+
+  const addAuditLog = useCallback((action: string, details: string) => {
+    if (!currentUser) return;
+    const newLog: AuditLog = { id: generateId(), timestamp: new Date().toISOString(), user: currentUser.name, action, details };
+    setLogs(prev => { markAsDirty(); return [newLog, ...prev].slice(0, 1000); });
+  }, [currentUser]);
 
   const wrappedSetVacancies = (val: any) => { markAsDirty(); setVacancies(val); };
   const wrappedSetParameters = (val: any) => { markAsDirty(); setParameters(val); };
@@ -221,7 +210,7 @@ const App: React.FC = () => {
       activeTab={activeTab} setActiveTab={setActiveTab} 
       userRole={currentUser.role} userName={currentUser.name} 
       onLogout={() => { setCurrentUser(null); localStorage.removeItem('sistemp_session_user'); }}
-      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; lastChangeTimestamp.current = 0; loadFromCloud(); }}
+      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; loadFromCloud(); }}
     >
       {(() => {
         switch (activeTab) {
@@ -229,7 +218,7 @@ const App: React.FC = () => {
           case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={wrappedSetVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={wrappedSetAgencies} setUnits={wrappedSetUnits} convocations={convocations} setConvocations={wrappedSetConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
           case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={wrappedSetConvocations} profiles={profiles} onLog={addAuditLog} />;
           case 'reports': return <ReportsView vacancies={vacancies} convocations={convocations} />;
-          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users && d.users.length > 0) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onLog={addAuditLog} />;
+          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onLog={addAuditLog} />;
           case 'audit': return <AuditView logs={logs} onClear={() => { markAsDirty(); setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
           default: return <DashboardView vacancies={vacancies} />;
         }
