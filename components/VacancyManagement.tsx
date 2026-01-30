@@ -361,7 +361,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                             <th className="px-8 py-6">Posto / Ciclo</th>
                             <th className="px-8 py-6">Contratado / Concorrência</th>
                             <th className="px-8 py-6">Período de Atuação</th>
-                            <th className="px-8 py-6 text-center">Data Limite (Fatal)</th>
+                            <th className="px-8 py-6 text-center">Tempo Limite (Data Fatal)</th>
                             <th className="px-8 py-6 text-center">Saldo Restante</th>
                             <th className="px-8 py-6 text-right">Situação</th>
                             <th className="px-8 py-6 text-right">Ações</th>
@@ -395,8 +395,8 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         <div className="flex flex-col items-center">
-                                            <span className="font-black text-slate-800 text-[11px]">{formatDisplayDate(occ.projectedFinalDate)}</span>
-                                            <span className="text-[8px] font-black text-red-500 uppercase tracking-widest mt-0.5">Limite Máximo</span>
+                                            <span className="font-black text-red-600 text-[11px]">{formatDisplayDate(occ.projectedFinalDate)}</span>
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Fim do Posto</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-center">
@@ -574,7 +574,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                 </div>
               </div>
               <div className="flex justify-end gap-5 mt-10">
-                <button type="button" onClick={() => setShowAddContractModal(false)} className="px-8 py-4 font-bold text-slate-400 uppercase text-[11px] tracking-widest">Cancelar</button>
+                <button type="button" onClick={() => setShowAddContractModal(false)} className="px-8 py-4 font-bold text-slate-500 hover:text-slate-600 transition-colors uppercase text-xs tracking-widest">Cancelar</button>
                 <button type="submit" disabled={sortedPendingCandidates.length === 0} className="px-14 py-4 bg-blue-600 text-white font-black uppercase text-[11px] tracking-widest rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50">Contratar</button>
               </div>
             </form>
