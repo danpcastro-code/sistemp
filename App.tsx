@@ -1,230 +1,146 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Layout from './components/Layout';
-import DashboardView from './components/DashboardView';
-import VacancyManagement from './components/VacancyManagement';
-import ConvocationManagement from './components/ConvocationManagement';
-import SettingsView from './components/SettingsView';
-import ReportsView from './components/ReportsView';
-import LoginView from './components/LoginView';
-import AuditView from './components/AuditView';
-import { INITIAL_VACANCIES, INITIAL_PARAMETERS, INITIAL_CONVOKED } from './mockData';
-import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog } from './types';
-import { createClient } from '@supabase/supabase-js';
-import { generateId } from './utils';
+import React, { useState } from 'react';
+import { UserRole, User } from '../types';
+import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info } from 'lucide-react';
 
-const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
-const SUPABASE_KEY = "sb_publishable_I6orZsgeBZX0QRvhrQ5d-A_Jng0xH2s";
+interface LoginViewProps {
+  users: User[];
+  onLogin: (user: User) => void;
+}
 
-const DEFAULT_USERS: User[] = [
-  { id: '1', name: 'Administrador Sistema', username: 'admin', password: '123', role: UserRole.ADMIN },
-  { id: '2', name: 'Gestor RH', username: 'rh', password: '123', role: UserRole.HR },
-  { id: '3', name: 'Consulta Externa', username: 'consulta', password: '123', role: UserRole.CONSULTANT }
-];
+const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
-const DEFAULT_AGENCY = 'Ministério da Gestão e da Inovação em Serviços Públicos';
-const DEFAULT_UNIT = 'Sede Central';
-const DEFAULT_PROFILES = ['Professor Substituto', 'Técnico Especializado', 'Pesquisador Visitante', 'Administrador'];
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
 
-const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [cloudStatus, setCloudStatus] = useState<'idle' | 'syncing' | 'error' | 'connected'>('idle');
-  
-  const lastUpdateRef = useRef<string | null>(null);
-  const isUpdatingFromRemote = useRef(false);
-  const isDirty = useRef(false);
+    const cleanUser = username.trim().toLowerCase();
+    const cleanPass = password.trim();
 
-  const [users, setUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_users');
-      return saved ? JSON.parse(saved) : DEFAULT_USERS;
-    } catch { return DEFAULT_USERS; }
-  });
-
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_session_user');
-      if (!saved) return null;
-      const sessionUser = JSON.parse(saved);
-      return users.find(u => u.username.toLowerCase() === sessionUser.username.toLowerCase()) || null;
-    } catch { return null; }
-  });
-
-  const [vacancies, setVacancies] = useState<Vacancy[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_vacancies');
-      return saved ? JSON.parse(saved) : INITIAL_VACANCIES;
-    } catch { return INITIAL_VACANCIES; }
-  });
-
-  const [parameters, setParameters] = useState<LegalParameter[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_parameters');
-      return saved ? JSON.parse(saved) : INITIAL_PARAMETERS;
-    } catch { return INITIAL_PARAMETERS; }
-  });
-
-  const [agencies, setAgencies] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_agencies');
-      if (!saved) return [DEFAULT_AGENCY];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? [DEFAULT_AGENCY, ...parsed] : [DEFAULT_AGENCY];
-    } catch { return [DEFAULT_AGENCY]; }
-  });
-
-  const [units, setUnits] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_units');
-      if (!saved) return [DEFAULT_UNIT];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? [DEFAULT_UNIT, ...parsed] : [DEFAULT_UNIT];
-    } catch { return [DEFAULT_UNIT]; }
-  });
-
-  const [profiles, setProfiles] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_profiles');
-      return saved ? JSON.parse(saved) : DEFAULT_PROFILES;
-    } catch { return DEFAULT_PROFILES; }
-  });
-
-  const [convocations, setConvocations] = useState<ConvokedPerson[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_convocations');
-      return saved ? JSON.parse(saved) : INITIAL_CONVOKED;
-    } catch { return INITIAL_CONVOKED; }
-  });
-
-  const [logs, setLogs] = useState<AuditLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('sistemp_logs');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
-  const saveToCloud = useCallback(async () => {
-    if (isUpdatingFromRemote.current || !isDirty.current) return;
-    
-    try {
-      setCloudStatus('syncing');
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const newTime = new Date().toISOString();
-      const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs };
-      
-      const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime });
-      
-      if (!error) {
-          lastUpdateRef.current = newTime;
-          isDirty.current = false;
-          setCloudStatus('connected');
-      } else {
-          console.error("Erro Supabase:", error);
-          setCloudStatus('error');
-      }
-    } catch (e) {
-      setCloudStatus('error');
+    if (!cleanUser || !cleanPass) {
+      setError('Preencha todos os campos.');
+      return;
     }
-  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs]);
 
-  const loadFromCloud = useCallback(async (isSilent = false) => {
-    if (isDirty.current) return;
+    // Procura o usuário garantindo que a lista não esteja nula/vazia
+    const currentUsers = Array.isArray(users) ? users : [];
+    const foundUser = currentUsers.find(u => 
+        u.username.toLowerCase() === cleanUser && 
+        u.password === cleanPass
+    );
     
-    try {
-      if (!isSilent) setCloudStatus('syncing');
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).single();
-      
-      if (!error && data && data.updated_at !== lastUpdateRef.current) {
-        isUpdatingFromRemote.current = true;
-        
-        if (data.users) setUsers(data.users);
-        if (data.vacancies) setVacancies(data.vacancies);
-        if (data.parameters) setParameters(data.parameters);
-        if (data.profiles) setProfiles(data.profiles);
-        if (data.convocations) setConvocations(data.convocations);
-        if (data.logs) setLogs(data.logs);
-        if (data.agencies) setAgencies(data.agencies);
-        if (data.units) setUnits(data.units);
-        
-        lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
-      }
-      setCloudStatus('connected');
-    } catch (e) {
-      if (!isSilent) setCloudStatus('error');
+    if (foundUser) {
+      onLogin(foundUser);
+    } else {
+      setError('Credenciais inválidas. Verifique seu login e senha.');
+      console.warn("Tentativa de login falhou. Usuários carregados:", currentUsers.length);
     }
-  }, []);
-
-  // Debounce para salvamento automático
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      localStorage.setItem('sistemp_users', JSON.stringify(users));
-      localStorage.setItem('sistemp_vacancies', JSON.stringify(vacancies));
-      localStorage.setItem('sistemp_parameters', JSON.stringify(parameters));
-      localStorage.setItem('sistemp_agencies', JSON.stringify(agencies));
-      localStorage.setItem('sistemp_units', JSON.stringify(units));
-      localStorage.setItem('sistemp_profiles', JSON.stringify(profiles));
-      localStorage.setItem('sistemp_convocations', JSON.stringify(convocations));
-      localStorage.setItem('sistemp_logs', JSON.stringify(logs));
-      
-      if (isDirty.current) saveToCloud();
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
-
-  // Carregamento inicial e polling
-  useEffect(() => {
-    loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 15000);
-    return () => clearInterval(interval);
-  }, [loadFromCloud]);
-
-  const markAsDirty = () => {
-    if (!isUpdatingFromRemote.current) isDirty.current = true;
   };
 
-  const addAuditLog = useCallback((action: string, details: string) => {
-    if (!currentUser) return;
-    const newLog: AuditLog = { id: generateId(), timestamp: new Date().toISOString(), user: currentUser.name, action, details };
-    setLogs(prev => { markAsDirty(); return [newLog, ...prev].slice(0, 1000); });
-  }, [currentUser]);
-
-  const wrappedSetVacancies = (val: any) => { markAsDirty(); setVacancies(val); };
-  const wrappedSetParameters = (val: any) => { markAsDirty(); setParameters(val); };
-  const wrappedSetAgencies = (val: any) => { markAsDirty(); setAgencies(val); };
-  const wrappedSetUnits = (val: any) => { markAsDirty(); setUnits(val); };
-  const wrappedSetProfiles = (val: any) => { markAsDirty(); setProfiles(val); };
-  const wrappedSetConvocations = (val: any) => { markAsDirty(); setConvocations(val); };
-  const wrappedSetUsers = (val: any) => { markAsDirty(); setUsers(val); };
-
-  if (!currentUser) {
-    return <LoginView users={users} onLogin={u => {
-      setCurrentUser(u);
-      localStorage.setItem('sistemp_session_user', JSON.stringify(u));
-    }} />;
-  }
-
   return (
-    <Layout 
-      activeTab={activeTab} setActiveTab={setActiveTab} 
-      userRole={currentUser.role} userName={currentUser.name} 
-      onLogout={() => { setCurrentUser(null); localStorage.removeItem('sistemp_session_user'); }}
-      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; loadFromCloud(); }}
-    >
-      {(() => {
-        switch (activeTab) {
-          case 'dashboard': return <DashboardView vacancies={vacancies} />;
-          case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={wrappedSetVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={wrappedSetAgencies} setUnits={wrappedSetUnits} convocations={convocations} setConvocations={wrappedSetConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
-          case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={wrappedSetConvocations} profiles={profiles} onLog={addAuditLog} />;
-          case 'reports': return <ReportsView vacancies={vacancies} convocations={convocations} />;
-          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onLog={addAuditLog} />;
-          case 'audit': return <AuditView logs={logs} onClear={() => { markAsDirty(); setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
-          default: return <DashboardView vacancies={vacancies} />;
-        }
-      })()}
-    </Layout>
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
+        <div className="text-center mb-10">
+          <div className="inline-flex p-4 bg-blue-600 rounded-3xl shadow-2xl shadow-blue-500/20 mb-6">
+            <ShieldCheck size={48} className="text-white" />
+          </div>
+          <h1 className="text-4xl font-black text-white tracking-tighter">SisTemp</h1>
+          <p className="text-slate-400 font-medium mt-2 uppercase tracking-widest text-[10px]">Controle de Contratos Temporários</p>
+        </div>
+
+        <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden p-10">
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Acesso ao Sistema</h2>
+          <p className="text-sm text-slate-500 mb-8">Identifique-se para gerenciar ou consultar os dados.</p>
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Usuário / Login</label>
+              <div className="relative group">
+                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+                <input 
+                  type="text" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Seu identificador"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Senha</label>
+              <div className="relative group">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-mono"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="flex items-center space-x-2 p-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold animate-in fade-in slide-in-from-top-1">
+                <AlertCircle size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95 mt-2"
+            >
+              Entrar no Sistema
+            </button>
+          </form>
+
+          <div className="mt-8 space-y-3">
+            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start space-x-3">
+                <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                <div className="text-[10px] space-y-1">
+                    <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Inicial</p>
+                    <p className="text-blue-700/70">Logins padrão ativos no sistema:</p>
+                    <div className="pt-1 flex flex-col space-y-0.5 font-bold text-blue-800">
+                        <span className="flex justify-between">ADMIN: <span>admin / 123</span></span>
+                        <span className="flex justify-between">GESTOR RH: <span>rh / 123</span></span>
+                        <span className="flex justify-between">CONSULTA: <span>consulta / 123</span></span>
+                    </div>
+                </div>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-slate-50 flex flex-col items-center">
+             <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest">
+               Segurança de Dados • LGPD Compliant
+             </p>
+             <button 
+                type="button"
+                onClick={() => {
+                    if(confirm("Deseja resetar as credenciais locais? Isso forçará o carregamento dos usuários padrão (admin, rh, consulta) e pode resolver problemas de acesso.")) {
+                        localStorage.removeItem('sistemp_users');
+                        localStorage.removeItem('sistemp_session_user');
+                        window.location.reload();
+                    }
+                }}
+                className="mt-4 text-[8px] font-black uppercase text-slate-300 hover:text-red-400 transition-colors"
+             >
+                Resetar Credenciais de Acesso
+             </button>
+          </div>
+        </div>
+        
+        <p className="text-center text-slate-600 text-[10px] font-bold uppercase mt-8 tracking-widest opacity-50">
+          SisTemp v1.7.5 • Núcleo de Gestão de Pessoas
+        </p>
+      </div>
+    </div>
   );
 };
 
-export default App;
+export default LoginView;
