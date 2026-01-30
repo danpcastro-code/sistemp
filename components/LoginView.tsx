@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { UserRole, User } from '../types';
-import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info } from 'lucide-react';
+import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info, RefreshCcw } from 'lucide-react';
 
 interface LoginViewProps {
   users: User[];
@@ -25,7 +25,6 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
       return;
     }
 
-    // Procura o usuário garantindo que a lista não esteja nula/vazia
     const currentUsers = Array.isArray(users) ? users : [];
     const foundUser = currentUsers.find(u => 
         u.username.toLowerCase() === cleanUser && 
@@ -35,8 +34,14 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
     if (foundUser) {
       onLogin(foundUser);
     } else {
-      setError('Credenciais inválidas. Verifique seu login e senha.');
-      console.warn("Tentativa de login falhou. Usuários carregados:", currentUsers.length);
+      setError('Credenciais inválidas. Tente admin / 123 ou rh / 123.');
+    }
+  };
+
+  const forceReset = () => {
+    if (confirm("Deseja resetar o cache local? Isso forçará o sistema a recarregar as credenciais padrão do servidor.")) {
+        localStorage.clear();
+        window.location.reload();
     }
   };
 
@@ -53,7 +58,7 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
 
         <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden p-10">
           <h2 className="text-xl font-bold text-slate-800 mb-2">Acesso ao Sistema</h2>
-          <p className="text-sm text-slate-500 mb-8">Identifique-se para gerenciar ou consultar os dados.</p>
+          <p className="text-sm text-slate-500 mb-8">Identifique-se para gerenciar os dados.</p>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
@@ -64,9 +69,8 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
                   type="text" 
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Seu identificador"
+                  placeholder="Seu identificador (ex: rh)"
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
-                  autoFocus
                 />
               </div>
             </div>
@@ -86,9 +90,18 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
             </div>
 
             {error && (
-              <div className="flex items-center space-x-2 p-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold animate-in fade-in slide-in-from-top-1">
-                <AlertCircle size={16} />
-                <span>{error}</span>
+              <div className="flex flex-col space-y-2 p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold border border-red-100">
+                <div className="flex items-center space-x-2">
+                    <AlertCircle size={16} />
+                    <span>{error}</span>
+                </div>
+                <button 
+                    type="button" 
+                    onClick={forceReset}
+                    className="flex items-center justify-center mt-2 py-2 bg-red-600 text-white rounded-xl text-[10px] uppercase font-black tracking-widest shadow-md active:scale-95 transition-all"
+                >
+                    <RefreshCcw size={12} className="mr-2" /> Forçar Reset de Credenciais
+                </button>
               </div>
             )}
 
@@ -104,39 +117,18 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start space-x-3">
                 <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-[10px] space-y-1">
-                    <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Inicial</p>
-                    <p className="text-blue-700/70">Logins padrão ativos no sistema:</p>
+                    <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Padrão</p>
                     <div className="pt-1 flex flex-col space-y-0.5 font-bold text-blue-800">
                         <span className="flex justify-between">ADMIN: <span>admin / 123</span></span>
                         <span className="flex justify-between">GESTOR RH: <span>rh / 123</span></span>
-                        <span className="flex justify-between">CONSULTA: <span>consulta / 123</span></span>
                     </div>
                 </div>
             </div>
           </div>
-
-          <div className="mt-6 pt-6 border-t border-slate-50 flex flex-col items-center">
-             <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest">
-               Segurança de Dados • LGPD Compliant
-             </p>
-             <button 
-                type="button"
-                onClick={() => {
-                    if(confirm("Deseja resetar as credenciais locais? Isso forçará o carregamento dos usuários padrão (admin, rh, consulta) e pode resolver problemas de acesso.")) {
-                        localStorage.removeItem('sistemp_users');
-                        localStorage.removeItem('sistemp_session_user');
-                        window.location.reload();
-                    }
-                }}
-                className="mt-4 text-[8px] font-black uppercase text-slate-300 hover:text-red-400 transition-colors"
-             >
-                Resetar Credenciais de Acesso
-             </button>
-          </div>
         </div>
         
         <p className="text-center text-slate-600 text-[10px] font-bold uppercase mt-8 tracking-widest opacity-50">
-          SisTemp v1.7.5 • Núcleo de Gestão de Pessoas
+          SisTemp v1.7.6 • Núcleo de Gestão de Pessoas
         </p>
       </div>
     </div>
