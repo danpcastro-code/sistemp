@@ -8,7 +8,8 @@ import { format, parseISO } from 'date-fns';
 
 interface DashboardViewProps {
   vacancies: Vacancy[];
-  setVacancies: (v: Vacancy[]) => void;
+  // Fix: changed type to React.Dispatch<React.SetStateAction<Vacancy[]>> to support functional updates
+  setVacancies: React.Dispatch<React.SetStateAction<Vacancy[]>>;
   convocations: ConvokedPerson[];
   onLog: (action: string, details: string) => void;
   emailConfig: EmailConfig;
@@ -129,6 +130,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
         if (success) {
             count++;
             // Atualização local de cada um
+            // Fix: support functional update and simplified map logic
             setVacancies(prev => prev.map(v => v.code === occ.vacancyCode ? {
                 ...v,
                 occupations: v.occupations.map(o => o.id === occ.id ? {
@@ -136,7 +138,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
                   lastNotificationDate: new Date().toISOString(),
                   notificationsCount: (o.notificationsCount || 0) + 1
                 } : o)
-            } : prev.find(vx => vx.code === occ.vacancyCode) || v));
+            } : v));
         }
     }
 
