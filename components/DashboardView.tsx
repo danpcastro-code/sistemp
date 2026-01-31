@@ -1,18 +1,25 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip } from 'recharts';
-import { Vacancy, VacancyStatus, ContractStatus } from '../types';
-import { getVacancyStats, getWarningInfo } from '../utils';
-import { Bell, CheckCircle, UserMinus, Users, AlertTriangle, Mail, FastForward, UserX, Clock } from 'lucide-react';
+import { Vacancy, VacancyStatus, ContractStatus, ConvokedPerson, EmailConfig } from '../types';
+import { getVacancyStats, getWarningInfo, formatDisplayDate } from '../utils';
+import { Bell, CheckCircle, UserMinus, Users, AlertTriangle, Mail, FastForward, UserX, Clock, Send, RefreshCw, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 interface DashboardViewProps {
   vacancies: Vacancy[];
+  setVacancies: (v: Vacancy[]) => void;
+  convocations: ConvokedPerson[];
+  onLog: (action: string, details: string) => void;
+  emailConfig: EmailConfig;
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#ef4444', '#6366f1'];
 
-const DashboardView: React.FC<DashboardViewProps> = ({ vacancies }) => {
+const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, convocations, onLog, emailConfig }) => {
+  const [isSending, setIsSending] = useState<string | null>(null);
+  const [isSendingAll, setIsSendingAll] = useState(false);
+
   const total = vacancies.length;
   const provided = vacancies.filter(v => v.status === VacancyStatus.PROVIDED).length;
   const notProvided = vacancies.filter(v => v.status === VacancyStatus.NOT_PROVIDED).length;
@@ -30,6 +37,113 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies }) => {
       .map(o => ({ ...o, warning: getWarningInfo(o), vacancyCode: v.code }))
   ).filter(o => o.warning.isWarning)
    .sort((a, b) => a.warning.daysLeft - b.warning.daysLeft);
+
+  const sendRealEmail = async (occ: any) => {
+    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
+        alert("Erro: Integração de E-mail não configurada. Vá em Parametrização > E-mail.");
+        return false;
+    }
+
+    const person = convocations.find(p => p.id === occ.personId);
+    if (!person || !person.email) {
+        alert(`Erro: E-mail não encontrado para ${occ.contractedName}`);
+        return false;
+    }
+
+    // Preparação do corpo da mensagem substituindo as tags
+    const message = emailConfig.template
+        .replace(/{nome}/g, person.name)
+        .replace(/{posto}/g, `Posto #${occ.slotIndex}`)
+        .replace(/{grupo}/g, occ.vacancyCode)
+        .replace(/{data_fatal}/g, formatDisplayDate(occ.warning.date));
+
+    try {
+        const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                service_id: emailConfig.serviceId,
+                template_id: emailConfig.templateId,
+                user_id: emailConfig.publicKey,
+                template_params: {
+                    to_name: person.name,
+                    to_email: person.email,
+                    from_name: "SisTemp RH",
+                    subject: emailConfig.subject,
+                    message: message
+                }
+            })
+        });
+
+        if (response.ok) {
+            return true;
+        } else {
+            const err = await response.text();
+            console.error("EmailJS Error:", err);
+            return false;
+        }
+    } catch (e) {
+        console.error("Fetch Error:", e);
+        return false;
+    }
+  };
+
+  const handleSendNotification = async (occId: string, vacancyCode: string) => {
+    const vacancy = vacancies.find(v => v.code === vacancyCode);
+    if (!vacancy) return;
+
+    const occ = vacancy.occupations.find(o => o.id === occId);
+    if (!occ) return;
+    
+    setIsSending(occId);
+    const success = await sendRealEmail({ ...occ, warning: getWarningInfo(occ), vacancyCode });
+
+    if (success) {
+        const updatedVacancies = vacancies.map(v => v.code === vacancyCode ? {
+            ...v,
+            occupations: v.occupations.map(o => o.id === occId ? {
+              ...o,
+              lastNotificationDate: new Date().toISOString(),
+              notificationsCount: (o.notificationsCount || 0) + 1
+            } : o)
+        } : v);
+        setVacancies(updatedVacancies);
+        onLog('NOTIFICAÇÃO', `E-mail REAL enviado para ${occ.contractedName}.`);
+        alert(`Notificação enviada com sucesso!`);
+    } else {
+        alert("Falha ao enviar e-mail. Verifique suas credenciais de integração.");
+    }
+    setIsSending(null);
+  };
+
+  const handleNotifyAll = async () => {
+    if (activeAlerts.length === 0) return;
+    if (!confirm(`Deseja enviar notificações individuais para os ${activeAlerts.length} contratados da lista?`)) return;
+
+    setIsSendingAll(true);
+    let count = 0;
+    
+    // Processamento sequencial para não sobrecarregar a API
+    for (const occ of activeAlerts) {
+        const success = await sendRealEmail(occ);
+        if (success) {
+            count++;
+            // Atualização local de cada um
+            setVacancies(prev => prev.map(v => v.code === occ.vacancyCode ? {
+                ...v,
+                occupations: v.occupations.map(o => o.id === occ.id ? {
+                  ...o,
+                  lastNotificationDate: new Date().toISOString(),
+                  notificationsCount: (o.notificationsCount || 0) + 1
+                } : o)
+            } : prev.find(vx => vx.code === occ.vacancyCode) || v));
+        }
+    }
+
+    setIsSendingAll(false);
+    onLog('NOTIFICAÇÃO_LOTE', `Disparo em massa concluído: ${count} e-mails enviados.`);
+    alert(`Processo concluído: ${count} e-mails enviados.`);
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -64,32 +178,56 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies }) => {
               <Clock className="mr-3 text-blue-600" size={24} /> Avisos de Gestão (Janela 90d)
             </h3>
             <div className="flex space-x-2">
-                <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black border border-blue-100 uppercase">Prorrogação</span>
-                <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black border border-red-100 uppercase">Término Fatal</span>
+                {activeAlerts.length > 0 && (
+                    <button 
+                        disabled={isSendingAll}
+                        onClick={handleNotifyAll}
+                        className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black border border-slate-700 uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center disabled:opacity-50"
+                    >
+                        {isSendingAll ? <RefreshCw size={12} className="mr-2 animate-spin" /> : <Mail size={12} className="mr-2" />}
+                        {isSendingAll ? 'Enviando Lote...' : 'Notificar Todos'}
+                    </button>
+                )}
             </div>
           </div>
           
           <div className="space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
             {activeAlerts.length > 0 ? activeAlerts.map(occ => (
-              <div key={occ.id} className={`p-5 rounded-2xl border flex items-center justify-between transition-all hover:shadow-lg ${occ.warning.type === 'termination' ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+              <div key={occ.id} className={`p-5 rounded-3xl border flex items-center justify-between transition-all hover:shadow-lg ${occ.warning.type === 'termination' ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
                 <div className="flex items-center space-x-4">
-                  <div className={`p-3 rounded-xl ${occ.warning.type === 'termination' ? 'bg-red-200 text-red-700' : 'bg-blue-200 text-blue-700'}`}>
-                    {occ.warning.type === 'termination' ? <UserX size={18} /> : <FastForward size={18} />}
+                  <div className={`p-4 rounded-2xl ${occ.warning.type === 'termination' ? 'bg-red-200 text-red-700' : 'bg-blue-200 text-blue-700'}`}>
+                    {occ.warning.type === 'termination' ? <UserX size={20} /> : <FastForward size={20} />}
                   </div>
                   <div>
                     <p className="text-sm font-black text-slate-800 leading-none">{occ.contractedName}</p>
                     <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{occ.vacancyCode} • {occ.warning.label}</p>
+                    {occ.lastNotificationDate && (
+                      <p className="text-[9px] font-black text-green-600 uppercase mt-1.5 flex items-center">
+                        <CheckCircle size={10} className="mr-1" /> Notificado em {formatDisplayDate(occ.lastNotificationDate)}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className={`text-[11px] font-black block ${occ.warning.daysLeft < 15 ? 'text-red-600 animate-pulse' : 'text-slate-700'}`}>
-                    {occ.warning.daysLeft <= 0 ? 'PRAZO VENCIDO' : `Faltam ${occ.warning.daysLeft} dias`}
-                  </span>
-                  {occ.warning.type === 'termination' && (
-                    <div className="flex items-center justify-end text-[9px] text-red-600 font-black mt-1 uppercase">
-                      <Mail size={12} className="mr-1" /> Notificação Mensal Ativa
-                    </div>
-                  )}
+                <div className="flex items-center space-x-4">
+                  <div className="text-right">
+                    <span className={`text-[11px] font-black block ${occ.warning.daysLeft < 15 ? 'text-red-600 animate-pulse' : 'text-slate-700'}`}>
+                      {occ.warning.daysLeft <= 0 ? 'VENCIDO' : `${occ.warning.daysLeft} dias`}
+                    </span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{formatDisplayDate(occ.warning.date)}</span>
+                  </div>
+                  
+                  <button 
+                    disabled={!!isSending}
+                    onClick={() => handleSendNotification(occ.id, occ.vacancyCode)}
+                    className={`p-3 bg-white border rounded-2xl transition-all shadow-sm active:scale-90 group ${occ.warning.type === 'termination' ? 'border-red-200 text-red-500 hover:bg-red-600 hover:text-white' : 'border-blue-200 text-blue-500 hover:bg-blue-600 hover:text-white'}`}
+                    title="Enviar Notificação Real"
+                  >
+                    {isSending === occ.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                        <Send size={16} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                    )}
+                  </button>
                 </div>
               </div>
             )) : (
