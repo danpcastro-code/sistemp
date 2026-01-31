@@ -9,7 +9,7 @@ import ReportsView from './components/ReportsView';
 import LoginView from './components/LoginView';
 import AuditView from './components/AuditView';
 import { INITIAL_VACANCIES, INITIAL_PARAMETERS, INITIAL_CONVOKED } from './mockData';
-import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog } from './types';
+import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, EmailConfig } from './types';
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
@@ -21,6 +21,15 @@ const DEFAULT_USERS: User[] = [
   { id: '2', name: 'Gestor RH', username: 'rh', password: '123', role: UserRole.HR },
   { id: '3', name: 'Consulta Externa', username: 'consulta', password: '123', role: UserRole.CONSULTANT }
 ];
+
+const DEFAULT_EMAIL_CONFIG: EmailConfig = {
+  serviceId: '',
+  templateId: '',
+  publicKey: '',
+  sender: 'rh.notificacao@orgao.gov.br',
+  subject: 'Aviso de Término de Contrato Temporário',
+  template: 'Prezado(a) {nome},\n\nInformamos que seu contrato vinculado ao posto {posto} do grupo {grupo} atingirá o limite fatal de permanência em {data_fatal}.\n\nFavor comparecer ao RH para orientações.'
+};
 
 const mergeWithDefaultUsers = (incomingUsers: any[]): User[] => {
   const list = Array.isArray(incomingUsers) ? incomingUsers : [];
@@ -104,6 +113,13 @@ const App: React.FC = () => {
     } catch { return INITIAL_CONVOKED; }
   });
 
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(() => {
+    try {
+      const saved = localStorage.getItem('sistemp_email_config');
+      return saved ? JSON.parse(saved) : DEFAULT_EMAIL_CONFIG;
+    } catch { return DEFAULT_EMAIL_CONFIG; }
+  });
+
   const [logs, setLogs] = useState<AuditLog[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_logs');
@@ -118,24 +134,21 @@ const App: React.FC = () => {
       setCloudStatus('syncing');
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
       const newTime = new Date().toISOString();
-      const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs };
+      const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig };
       
-      // Upsert garantindo ID 1
       const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime }, { onConflict: 'id' });
       
       if (!error) {
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
-          console.debug("SisTemp: Sincronização de saída concluída.");
       } else {
-          console.error("SisTemp: Erro Supabase ao salvar:", error);
           setCloudStatus('error');
       }
     } catch (e) {
       setCloudStatus('error');
     }
-  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs]);
+  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig]);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
     if (isDirty.current) return;
@@ -147,7 +160,6 @@ const App: React.FC = () => {
       
       if (!error && data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
-        console.debug("SisTemp: Carregando dados atualizados da nuvem...");
 
         if (data.users) setUsers(mergeWithDefaultUsers(data.users));
         if (data.vacancies) setVacancies(data.vacancies);
@@ -157,6 +169,7 @@ const App: React.FC = () => {
         if (data.logs) setLogs(data.logs);
         if (data.agencies) setAgencies(data.agencies);
         if (data.units) setUnits(data.units);
+        if (data.emailConfig) setEmailConfig(data.emailConfig);
         
         lastUpdateRef.current = data.updated_at;
         setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
@@ -167,7 +180,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Salvamento Automático (Debounce de 1 segundo para maior agilidade)
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem('sistemp_users', JSON.stringify(users));
@@ -178,23 +190,12 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_profiles', JSON.stringify(profiles));
       localStorage.setItem('sistemp_convocations', JSON.stringify(convocations));
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
+      localStorage.setItem('sistemp_email_config', JSON.stringify(emailConfig));
       
       if (isDirty.current) saveToCloud();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, saveToCloud]);
-
-  // Prevenção de perda de dados ao fechar
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (isDirty.current) {
-        localStorage.setItem('sistemp_vacancies', JSON.stringify(vacancies));
-        // Nota: Gravação em rede no beforeunload é incerta, o localStorage garante a volta.
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [vacancies]);
+  }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig, saveToCloud]);
 
   useEffect(() => {
     loadFromCloud();
@@ -219,6 +220,7 @@ const App: React.FC = () => {
   const wrappedSetProfiles = (val: any) => { markAsDirty(); setProfiles(val); };
   const wrappedSetConvocations = (val: any) => { markAsDirty(); setConvocations(val); };
   const wrappedSetUsers = (val: any) => { markAsDirty(); setUsers(val); };
+  const wrappedSetEmailConfig = (val: any) => { markAsDirty(); setEmailConfig(val); };
 
   if (!currentUser) {
     return <LoginView users={users} onLogin={u => {
@@ -236,13 +238,13 @@ const App: React.FC = () => {
     >
       {(() => {
         switch (activeTab) {
-          case 'dashboard': return <DashboardView vacancies={vacancies} setVacancies={wrappedSetVacancies} convocations={convocations} onLog={addAuditLog} />;
+          case 'dashboard': return <DashboardView vacancies={vacancies} setVacancies={wrappedSetVacancies} convocations={convocations} onLog={addAuditLog} emailConfig={emailConfig} />;
           case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={wrappedSetVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={wrappedSetAgencies} setUnits={wrappedSetUnits} convocations={convocations} setConvocations={wrappedSetConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
           case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={wrappedSetConvocations} profiles={profiles} onLog={addAuditLog} />;
           case 'reports': return <ReportsView vacancies={vacancies} convocations={convocations} />;
-          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); }} cloudStatus={cloudStatus} onLog={addAuditLog} />;
+          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); if(d.emailConfig) setEmailConfig(d.emailConfig); }} cloudStatus={cloudStatus} onLog={addAuditLog} emailConfig={emailConfig} setEmailConfig={wrappedSetEmailConfig} />;
           case 'audit': return <AuditView logs={logs} onClear={() => { markAsDirty(); setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
-          default: return <DashboardView vacancies={vacancies} setVacancies={wrappedSetVacancies} convocations={convocations} onLog={addAuditLog} />;
+          default: return <DashboardView vacancies={vacancies} setVacancies={wrappedSetVacancies} convocations={convocations} onLog={addAuditLog} emailConfig={emailConfig} />;
         }
       })()}
     </Layout>
