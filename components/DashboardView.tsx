@@ -1,14 +1,13 @@
 
-import React, { useState } from 'react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip } from 'recharts';
+import React, { useState, useMemo } from 'react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Vacancy, VacancyStatus, ContractStatus, ConvokedPerson, EmailConfig } from '../types';
 import { getVacancyStats, getWarningInfo, formatDisplayDate } from '../utils';
-import { Bell, CheckCircle, UserMinus, Users, AlertTriangle, Mail, FastForward, UserX, Clock, Send, RefreshCw, Loader2 } from 'lucide-react';
+import { Bell, CheckCircle, UserMinus, Users, AlertTriangle, Mail, FastForward, UserX, Clock, Send, RefreshCw, Loader2, ArrowUpRight, TrendingUp, FileText } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 interface DashboardViewProps {
   vacancies: Vacancy[];
-  // Fix: changed type to React.Dispatch<React.SetStateAction<Vacancy[]>> to support functional updates
   setVacancies: React.Dispatch<React.SetStateAction<Vacancy[]>>;
   convocations: ConvokedPerson[];
   onLog: (action: string, details: string) => void;
@@ -20,6 +19,7 @@ const COLORS = ['#10b981', '#3b82f6', '#ef4444', '#6366f1'];
 const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, convocations, onLog, emailConfig }) => {
   const [isSending, setIsSending] = useState<string | null>(null);
   const [isSendingAll, setIsSendingAll] = useState(false);
+  const [turnoverView, setTurnoverView] = useState<'profile' | 'notice'>('profile');
 
   const total = vacancies.length;
   const provided = vacancies.filter(v => v.status === VacancyStatus.PROVIDED).length;
@@ -39,6 +39,42 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
   ).filter(o => o.warning.isWarning)
    .sort((a, b) => a.warning.daysLeft - b.warning.daysLeft);
 
+  // Cálculo de Rotatividade (Turnover)
+  const turnoverStats = useMemo(() => {
+    const profileMap = new Map<string, { exits: number, totalSlots: number }>();
+    const noticeMap = new Map<string, { exits: number, totalSlots: number }>();
+
+    vacancies.forEach(v => {
+      // Por Perfil
+      const pData = profileMap.get(v.type) || { exits: 0, totalSlots: 0 };
+      pData.totalSlots += v.initialQuantity;
+      pData.exits += v.occupations.filter(o => o.status === ContractStatus.ENDED).length;
+      profileMap.set(v.type, pData);
+
+      // Por Edital
+      const nData = noticeMap.get(v.publicNotice) || { exits: 0, totalSlots: 0 };
+      nData.totalSlots += v.initialQuantity;
+      nData.exits += v.occupations.filter(o => o.status === ContractStatus.ENDED).length;
+      noticeMap.set(v.publicNotice, nData);
+    });
+
+    const profiles = Array.from(profileMap.entries()).map(([name, data]) => ({
+      name,
+      percentage: data.totalSlots > 0 ? Number(((data.exits / data.totalSlots) * 100).toFixed(1)) : 0,
+      exits: data.exits,
+      slots: data.totalSlots
+    })).sort((a, b) => b.percentage - a.percentage);
+
+    const notices = Array.from(noticeMap.entries()).map(([name, data]) => ({
+      name,
+      percentage: data.totalSlots > 0 ? Number(((data.exits / data.totalSlots) * 100).toFixed(1)) : 0,
+      exits: data.exits,
+      slots: data.totalSlots
+    })).sort((a, b) => b.percentage - a.percentage);
+
+    return { profiles, notices };
+  }, [vacancies]);
+
   const sendRealEmail = async (occ: any) => {
     if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
         alert("Erro: Integração de E-mail não configurada. Vá em Parametrização > E-mail.");
@@ -51,7 +87,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
         return false;
     }
 
-    // Preparação do corpo da mensagem substituindo as tags
     const message = emailConfig.template
         .replace(/{nome}/g, person.name)
         .replace(/{posto}/g, `Posto #${occ.slotIndex}`)
@@ -124,13 +159,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
     setIsSendingAll(true);
     let count = 0;
     
-    // Processamento sequencial para não sobrecarregar a API
     for (const occ of activeAlerts) {
         const success = await sendRealEmail(occ);
         if (success) {
             count++;
-            // Atualização local de cada um
-            // Fix: support functional update and simplified map logic
             setVacancies(prev => prev.map(v => v.code === occ.vacancyCode ? {
                 ...v,
                 occupations: v.occupations.map(o => o.id === occ.id ? {
@@ -241,6 +273,68 @@ const DashboardView: React.FC<DashboardViewProps> = ({ vacancies, setVacancies, 
           </div>
         </div>
       </div>
+
+      {/* Seção de Rotatividade */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 animate-in fade-in duration-700">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter flex items-center">
+              <TrendingUp className="mr-3 text-indigo-600" size={24} /> Insights de Rotatividade (Turnover)
+            </h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Percentual de vacância definitiva por grupo/edital</p>
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <button 
+              onClick={() => setTurnoverView('profile')}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${turnoverView === 'profile' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}
+            >
+              Por Perfil
+            </button>
+            <button 
+              onClick={() => setTurnoverView('notice')}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${turnoverView === 'notice' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}
+            >
+              Por Edital
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {(turnoverView === 'profile' ? turnoverStats.profiles : turnoverStats.notices).slice(0, 8).map((item, idx) => (
+            <div key={idx} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col group hover:shadow-lg transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-2 bg-white rounded-xl border border-slate-100 text-indigo-600 group-hover:scale-110 transition-transform">
+                  {turnoverView === 'profile' ? <Briefcase size={16} /> : <FileText size={16} />}
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className={`text-sm font-black tracking-tighter ${item.percentage > 30 ? 'text-red-600' : 'text-slate-800'}`}>
+                    {item.percentage}%
+                  </span>
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Rotatividade</span>
+                </div>
+              </div>
+              <h4 className="text-xs font-black text-slate-700 truncate mb-4 uppercase tracking-tight" title={item.name}>{item.name}</h4>
+              <div className="mt-auto space-y-2">
+                <div className="w-full h-1.5 bg-white rounded-full overflow-hidden border border-slate-100">
+                  <div 
+                    className={`h-full transition-all duration-1000 ${item.percentage > 30 ? 'bg-red-500' : 'bg-indigo-500'}`} 
+                    style={{ width: `${item.percentage}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                  <span>{item.exits} Saídas</span>
+                  <span>{item.slots} Postos Totais</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {(turnoverView === 'profile' ? turnoverStats.profiles : turnoverStats.notices).length === 0 && (
+            <div className="col-span-4 py-10 text-center text-slate-300 italic uppercase text-[10px] tracking-widest font-black">
+              Nenhuma movimentação encerrada para análise
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -255,6 +349,14 @@ const StatCard: React.FC<{title: string, value: number, icon: React.ReactNode, c
       <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
     </div>
   </div>
+);
+
+// Ícones auxiliares que não estavam no import original
+const Briefcase: React.FC<{size?: number, className?: string}> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+  </svg>
 );
 
 export default DashboardView;
