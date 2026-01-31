@@ -58,6 +58,15 @@ export interface LegalParameter {
   description: string;
 }
 
+export interface EmailConfig {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+  sender: string;
+  subject: string;
+  template: string;
+}
+
 export interface Occupation {
   id: string;
   contractedName: string;
@@ -66,8 +75,8 @@ export interface Occupation {
   slotIndex: number; 
   startDate: string;
   endDate: string;
-  competition?: CompetitionType; // Adicionado para persistir a concorrência no histórico
-  amendmentTerm?: string; // Número do Termo Aditivo
+  competition?: CompetitionType;
+  amendmentTerm?: string;
   projectedFinalDate: string; 
   isExtensionRequired: boolean; 
   terminationReason?: string;
