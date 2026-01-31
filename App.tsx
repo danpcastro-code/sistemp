@@ -53,6 +53,7 @@ const App: React.FC = () => {
   const isUpdatingFromRemote = useRef(false);
   const isDirty = useRef(false);
 
+  // Estados Base
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('sistemp_users');
@@ -128,29 +129,52 @@ const App: React.FC = () => {
   });
 
   const saveToCloud = useCallback(async () => {
+    // Só salva se houver mudanças locais e não estivermos no meio de um download
     if (isUpdatingFromRemote.current || !isDirty.current) return;
     
     try {
       setCloudStatus('syncing');
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
       const newTime = new Date().toISOString();
-      const payload = { vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig };
       
-      const { error } = await supabase.from('sistemp_data').upsert({ id: 1, ...payload, updated_at: newTime }, { onConflict: 'id' });
+      // CRÍTICO: Alinhamento exato com as colunas do PostgreSQL (snake_case)
+      const payload = { 
+        vacancies, 
+        parameters, 
+        agencies, 
+        units, 
+        profiles, 
+        convocations, 
+        users, 
+        logs, 
+        email_config: emailConfig // Mapeamento para snake_case
+      };
+      
+      const { error } = await supabase
+        .from('sistemp_data')
+        .upsert({ 
+          id: 1, 
+          ...payload, 
+          updated_at: newTime 
+        }, { onConflict: 'id' });
       
       if (!error) {
+          console.log("Cloud Save Success:", newTime);
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
+          console.error("Cloud Save Error:", error.message);
           setCloudStatus('error');
       }
     } catch (e) {
+      console.error("Cloud Exception:", e);
       setCloudStatus('error');
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig]);
 
   const loadFromCloud = useCallback(async (isSilent = false) => {
+    // Não baixa dados se tivermos mudanças locais pendentes para evitar sobrescrita
     if (isDirty.current) return;
     
     try {
@@ -169,10 +193,11 @@ const App: React.FC = () => {
         if (data.logs) setLogs(data.logs);
         if (data.agencies) setAgencies(data.agencies);
         if (data.units) setUnits(data.units);
-        if (data.emailConfig) setEmailConfig(data.emailConfig);
+        if (data.email_config) setEmailConfig(data.email_config); // Mapeamento de volta
         
         lastUpdateRef.current = data.updated_at;
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 1000);
+        // Pequeno atraso para garantir que os efeitos de estado terminem
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
       }
       setCloudStatus('connected');
     } catch (e) {
@@ -180,8 +205,10 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Monitor de Mudanças e Salvamento Local/Nuvem
   useEffect(() => {
     const timer = setTimeout(() => {
+      // Persistência Local (Rede de Segurança)
       localStorage.setItem('sistemp_users', JSON.stringify(users));
       localStorage.setItem('sistemp_vacancies', JSON.stringify(vacancies));
       localStorage.setItem('sistemp_parameters', JSON.stringify(parameters));
@@ -192,27 +219,28 @@ const App: React.FC = () => {
       localStorage.setItem('sistemp_logs', JSON.stringify(logs));
       localStorage.setItem('sistemp_email_config', JSON.stringify(emailConfig));
       
-      if (isDirty.current) saveToCloud();
-    }, 1000);
+      // Persistência em Nuvem (Memorização Permanente)
+      if (isDirty.current) {
+          saveToCloud();
+      }
+    }, 1500); // Debounce de 1.5s para não sobrecarregar
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig, saveToCloud]);
 
+  // Ciclo de Vida: Carregamento Inicial e Polling
   useEffect(() => {
     loadFromCloud();
-    const interval = setInterval(() => loadFromCloud(true), 10000);
+    const interval = setInterval(() => loadFromCloud(true), 15000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
 
   const markAsDirty = () => {
-    if (!isUpdatingFromRemote.current) isDirty.current = true;
+    if (!isUpdatingFromRemote.current) {
+        isDirty.current = true;
+    }
   };
 
-  const addAuditLog = useCallback((action: string, details: string) => {
-    if (!currentUser) return;
-    const newLog: AuditLog = { id: generateId(), timestamp: new Date().toISOString(), user: currentUser.name, action, details };
-    setLogs(prev => { markAsDirty(); return [newLog, ...prev].slice(0, 1000); });
-  }, [currentUser]);
-
+  // Wrappers de estado para controle de auditoria de sujeira (dirty checking)
   const wrappedSetVacancies = (val: any) => { markAsDirty(); setVacancies(val); };
   const wrappedSetParameters = (val: any) => { markAsDirty(); setParameters(val); };
   const wrappedSetAgencies = (val: any) => { markAsDirty(); setAgencies(val); };
@@ -221,6 +249,12 @@ const App: React.FC = () => {
   const wrappedSetConvocations = (val: any) => { markAsDirty(); setConvocations(val); };
   const wrappedSetUsers = (val: any) => { markAsDirty(); setUsers(val); };
   const wrappedSetEmailConfig = (val: any) => { markAsDirty(); setEmailConfig(val); };
+
+  const addAuditLog = useCallback((action: string, details: string) => {
+    if (!currentUser) return;
+    const newLog: AuditLog = { id: generateId(), timestamp: new Date().toISOString(), user: currentUser.name, action, details };
+    setLogs(prev => { markAsDirty(); return [newLog, ...prev].slice(0, 1000); });
+  }, [currentUser]);
 
   if (!currentUser) {
     return <LoginView users={users} onLogin={u => {
@@ -234,7 +268,8 @@ const App: React.FC = () => {
       activeTab={activeTab} setActiveTab={setActiveTab} 
       userRole={currentUser.role} userName={currentUser.name} 
       onLogout={() => { setCurrentUser(null); localStorage.removeItem('sistemp_session_user'); }}
-      cloudStatus={cloudStatus} onSync={() => { isDirty.current = false; loadFromCloud(); }}
+      cloudStatus={cloudStatus} 
+      onSync={() => { isDirty.current = false; loadFromCloud(); }}
     >
       {(() => {
         switch (activeTab) {
@@ -242,7 +277,7 @@ const App: React.FC = () => {
           case 'vacancies': return <VacancyManagement vacancies={vacancies} setVacancies={wrappedSetVacancies} parameters={parameters} agencies={agencies} units={units} profiles={profiles} setAgencies={wrappedSetAgencies} setUnits={wrappedSetUnits} convocations={convocations} setConvocations={wrappedSetConvocations} userRole={currentUser.role} onLog={addAuditLog} />;
           case 'convocations': return <ConvocationManagement convocations={convocations} setConvocations={wrappedSetConvocations} profiles={profiles} onLog={addAuditLog} />;
           case 'reports': return <ReportsView vacancies={vacancies} convocations={convocations} />;
-          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); if(d.emailConfig) setEmailConfig(d.emailConfig); }} cloudStatus={cloudStatus} onLog={addAuditLog} emailConfig={emailConfig} setEmailConfig={wrappedSetEmailConfig} />;
+          case 'settings': return <SettingsView parameters={parameters} setParameters={wrappedSetParameters} agencies={agencies} setAgencies={wrappedSetAgencies} units={units} setUnits={wrappedSetUnits} profiles={profiles} setProfiles={wrappedSetProfiles} users={users} setUsers={wrappedSetUsers} vacancies={vacancies} convocations={convocations} onRestoreAll={d => { markAsDirty(); if(d.vacancies) setVacancies(d.vacancies); if(d.parameters) setParameters(d.parameters); if(d.users) setUsers(d.users); if(d.convocations) setConvocations(d.convocations); if(d.logs) setLogs(d.logs); if(d.agencies) setAgencies(d.agencies); if(d.units) setUnits(d.units); if(d.profiles) setProfiles(d.profiles); if(d.email_config) setEmailConfig(d.email_config); }} cloudStatus={cloudStatus} onLog={addAuditLog} emailConfig={emailConfig} setEmailConfig={wrappedSetEmailConfig} />;
           case 'audit': return <AuditView logs={logs} onClear={() => { markAsDirty(); setLogs([]); addAuditLog('LIMPEZA', 'Auditoria limpa pelo administrador.'); }} />;
           default: return <DashboardView vacancies={vacancies} setVacancies={wrappedSetVacancies} convocations={convocations} onLog={addAuditLog} emailConfig={emailConfig} />;
         }
