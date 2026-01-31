@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS sistemp_data (
   agencies jsonb DEFAULT '[]'::jsonb,
   units jsonb DEFAULT '[]'::jsonb,
   profiles jsonb DEFAULT '[]'::jsonb,
+  email_config jsonb DEFAULT '{}'::jsonb, -- Nova coluna para integrações
   logs jsonb DEFAULT '[]'::jsonb,
   updated_at timestamp with time zone DEFAULT now()
 );
@@ -36,14 +37,15 @@ USING (true)
 WITH CHECK (true);
 
 -- 4. INICIALIZA O REGISTRO RAIZ (Obrigatório para o sistema funcionar)
--- Sem este comando, o sistema não encontrará onde salvar os dados.
-INSERT INTO sistemp_data (id, vacancies, parameters, convocations, users) 
-VALUES (1, '[]', '[]', '[]', '[]') 
+INSERT INTO sistemp_data (id, vacancies, parameters, convocations, users, email_config) 
+VALUES (1, '[]', '[]', '[]', '[]', '{}') 
 ON CONFLICT (id) DO NOTHING;
 ```
 
-### 2. Verificar Conexão
-No sistema SisTemp, vá em **Parametrização > Conexão e Nuvem** e clique em **Testar Comunicação**. Se aparecer "Conexão Íntegra", o sistema passará a salvar tudo permanentemente.
+### 2. Verificar Conexão e Integração
+No sistema SisTemp:
+1. Vá em **Parametrização > Conexão e Nuvem** e clique em **Testar Comunicação**.
+2. Vá em **Parametrização > Integração E-mail** para configurar suas chaves do EmailJS e tornar o envio permanente e funcional.
 
 ---
 *Desenvolvido para gestão pública eficiente e auditável.*
