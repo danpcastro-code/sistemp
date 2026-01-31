@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
 import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig } from '../types';
-// Added Send and Info to the imports
 import { 
-  Plus, Trash2, Terminal, Users, Building2, MapPin, BriefcaseIcon, Wifi, X, UserPlus, Mail, Save, Server, Database, AlertCircle, CheckCircle2, RefreshCw, Key, Shield, Send, Info
+  Plus, Trash2, Terminal, Users, Building2, MapPin, BriefcaseIcon, Wifi, X, UserPlus, Mail, Save, Server, Database, AlertCircle, CheckCircle2, RefreshCw, Key, Shield, Send, Info, List
 } from 'lucide-react';
 import { generateId } from '../utils';
 import { createClient } from '@supabase/supabase-js';
@@ -48,10 +47,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [dbDiagnostic, setDbDiagnostic] = useState<{ status: 'idle' | 'checking' | 'ok' | 'fail', message: string }>({ status: 'idle', message: '' });
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
 
+  // Modais
   const [showParamModal, setShowParamModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAgencyModal, setShowAgencyModal] = useState(false);
+  const [showUnitModal, setShowUnitModal] = useState(false);
+
+  // Estados dos formulários
   const [newParam, setNewParam] = useState({ label: '', days: '' });
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
+  const [newProfile, setNewProfile] = useState('');
+  const [newAgency, setNewAgency] = useState('');
+  const [newUnit, setNewUnit] = useState('');
 
   const checkDatabase = async () => {
     setDbDiagnostic({ status: 'checking', message: 'Verificando tabelas no Supabase...' });
@@ -137,6 +145,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleAddProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newProfile.trim()) {
+      setProfiles([...profiles, newProfile.trim()]);
+      onLog('PARAMETRIZAÇÃO', `Novo perfil profissional: ${newProfile.trim()}`);
+      setNewProfile('');
+      setShowProfileModal(false);
+    }
+  };
+
+  const handleAddAgency = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newAgency.trim()) {
+      setAgencies([...agencies, newAgency.trim()]);
+      onLog('PARAMETRIZAÇÃO', `Novo órgão solicitante: ${newAgency.trim()}`);
+      setNewAgency('');
+      setShowAgencyModal(false);
+    }
+  };
+
+  const handleAddUnit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newUnit.trim()) {
+      setUnits([...units, newUnit.trim()]);
+      onLog('PARAMETRIZAÇÃO', `Nova unidade administrativa: ${newUnit.trim()}`);
+      setNewUnit('');
+      setShowUnitModal(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200">
@@ -147,6 +185,101 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+        {activeSubTab === 'params' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Perfis */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black text-slate-800 flex items-center uppercase text-[10px] tracking-widest"><BriefcaseIcon size={16} className="mr-3 text-blue-600" /> Perfis Profissionais</h3>
+                        <button onClick={() => setShowProfileModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Novo Perfil</button>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-50 max-h-60 custom-scrollbar">
+                        <table className="w-full text-left">
+                            <tbody className="divide-y divide-slate-50">
+                                {profiles.map((p, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-4 py-3 font-bold text-slate-700 text-xs">{p}</td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={() => setProfiles(profiles.filter(i => i !== p))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Amparos */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black text-slate-800 flex items-center uppercase text-[10px] tracking-widest"><Terminal size={16} className="mr-3 text-emerald-600" /> Amparos Legais</h3>
+                        <button onClick={() => setShowParamModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Novo Amparo</button>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-50 max-h-60 custom-scrollbar">
+                        <table className="w-full text-left">
+                            <tbody className="divide-y divide-slate-50">
+                                {parameters.map(p => (
+                                    <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-4 py-3 font-bold text-slate-700 text-xs">{p.label}</td>
+                                        <td className="px-4 py-3 text-xs text-slate-500 font-mono">{p.days}d</td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={() => setParameters(parameters.filter(i => i.id !== p.id))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Órgãos */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black text-slate-800 flex items-center uppercase text-[10px] tracking-widest"><Building2 size={16} className="mr-3 text-amber-600" /> Órgãos Solicitantes</h3>
+                        <button onClick={() => setShowAgencyModal(true)} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Novo Órgão</button>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-50 max-h-60 custom-scrollbar">
+                        <table className="w-full text-left">
+                            <tbody className="divide-y divide-slate-50">
+                                {agencies.map((a, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-4 py-3 font-bold text-slate-700 text-xs">{a}</td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={() => setAgencies(agencies.filter(i => i !== a))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Unidades */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black text-slate-800 flex items-center uppercase text-[10px] tracking-widest"><MapPin size={16} className="mr-3 text-indigo-600" /> Unidades Administrativas</h3>
+                        <button onClick={() => setShowUnitModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Nova Unidade</button>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-50 max-h-60 custom-scrollbar">
+                        <table className="w-full text-left">
+                            <tbody className="divide-y divide-slate-50">
+                                {units.map((u, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-4 py-3 font-bold text-slate-700 text-xs">{u}</td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={() => setUnits(units.filter(i => i !== u))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+          </div>
+        )}
+
         {activeSubTab === 'email' && (
           <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-200 animate-in fade-in duration-300">
             <div className="flex items-center space-x-4 mb-10">
@@ -232,69 +365,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* ... manter outras abas ... */}
-        {activeSubTab === 'params' && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-black text-slate-800 flex items-center uppercase text-sm tracking-tight"><BriefcaseIcon size={20} className="mr-3 text-blue-600" /> Perfis Profissionais</h3>
-                        <button onClick={() => alert('Para gerenciar perfis, utilize a lista abaixo ou contate o administrador.')} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Novo Perfil</button>
-                    </div>
-                    <div className="overflow-x-auto rounded-xl border border-slate-50">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50">
-                                <tr className="text-slate-400 text-[10px] uppercase font-black border-b border-slate-100">
-                                    <th className="px-4 py-3">Nome do Perfil</th>
-                                    <th className="px-4 py-3 text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {profiles.map((p, idx) => (
-                                    <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                                        <td className="px-4 py-3.5 font-bold text-slate-700 text-xs">{p}</td>
-                                        <td className="px-4 py-3.5 text-right">
-                                            <button onClick={() => setProfiles(profiles.filter(i => i !== p))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-black text-slate-800 flex items-center uppercase text-sm tracking-tight"><Terminal size={20} className="mr-3 text-emerald-600" /> Amparos Legais</h3>
-                        <button onClick={() => setShowParamModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Novo Amparo</button>
-                    </div>
-                    <div className="overflow-x-auto rounded-xl border border-slate-50">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50">
-                                <tr className="text-slate-400 text-[10px] uppercase font-black border-b border-slate-100">
-                                    <th className="px-4 py-3">Amparo</th>
-                                    <th className="px-4 py-3">Vigência</th>
-                                    <th className="px-4 py-3 text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {parameters.map(p => (
-                                    <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
-                                        <td className="px-4 py-3.5 font-bold text-slate-700 text-xs">{p.label}</td>
-                                        <td className="px-4 py-3.5 text-xs text-slate-500 font-mono">{p.days} dias</td>
-                                        <td className="px-4 py-3.5 text-right">
-                                            <button onClick={() => setParameters(parameters.filter(i => i.id !== p.id))} className="text-slate-200 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-          </div>
-        )}
-
         {activeSubTab === 'users' && (
           <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 animate-in fade-in duration-300">
              <div className="flex justify-between items-center mb-8">
@@ -371,6 +441,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
+      {/* Modais de Cadastro */}
       {showParamModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
             <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 border border-slate-200 animate-in zoom-in duration-200 relative">
@@ -382,6 +453,54 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="flex space-x-3 pt-4">
                         <button type="button" onClick={() => setShowParamModal(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cancelar</button>
                         <button type="submit" className="flex-1 py-4 bg-blue-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Gravar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 border border-slate-200 animate-in zoom-in duration-200 relative">
+                <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 text-slate-400"><X size={20}/></button>
+                <h2 className="text-xl font-black text-slate-800 mb-6 uppercase tracking-tight">Novo Perfil</h2>
+                <form onSubmit={handleAddProfile} className="space-y-4">
+                    <input required value={newProfile} onChange={e => setNewProfile(e.target.value)} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" placeholder="Ex: Professor Substituto" />
+                    <div className="flex space-x-3 pt-4">
+                        <button type="button" onClick={() => setShowProfileModal(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cancelar</button>
+                        <button type="submit" className="flex-1 py-4 bg-blue-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Gravar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {showAgencyModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 border border-slate-200 animate-in zoom-in duration-200 relative">
+                <button onClick={() => setShowAgencyModal(false)} className="absolute top-4 right-4 text-slate-400"><X size={20}/></button>
+                <h2 className="text-xl font-black text-slate-800 mb-6 uppercase tracking-tight">Novo Órgão</h2>
+                <form onSubmit={handleAddAgency} className="space-y-4">
+                    <input required value={newAgency} onChange={e => setNewAgency(e.target.value)} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" placeholder="Nome do Órgão" />
+                    <div className="flex space-x-3 pt-4">
+                        <button type="button" onClick={() => setShowAgencyModal(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cancelar</button>
+                        <button type="submit" className="flex-1 py-4 bg-amber-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Gravar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {showUnitModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 border border-slate-200 animate-in zoom-in duration-200 relative">
+                <button onClick={() => setShowUnitModal(false)} className="absolute top-4 right-4 text-slate-400"><X size={20}/></button>
+                <h2 className="text-xl font-black text-slate-800 mb-6 uppercase tracking-tight">Nova Unidade</h2>
+                <form onSubmit={handleAddUnit} className="space-y-4">
+                    <input required value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" placeholder="Nome da Unidade" />
+                    <div className="flex space-x-3 pt-4">
+                        <button type="button" onClick={() => setShowUnitModal(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cancelar</button>
+                        <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Gravar</button>
                     </div>
                 </form>
             </div>
