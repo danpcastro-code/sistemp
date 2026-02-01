@@ -1,109 +1,115 @@
 
 export enum UserRole {
-  ADMIN = 'admin',
-  HR = 'hr',
-  CONSULTANT = 'consultant'
-}
-
-export enum VacancyStatus {
-  PROVIDED = 'Provida',
-  NOT_PROVIDED = 'Não Provida',
-  CLOSED = 'Encerrada',
-  EXHAUSTED = 'Esgotada'
-}
-
-export enum ContractStatus {
-  ACTIVE = 'Ativo',
-  ENDED = 'Encerrado'
-}
-
-export enum CompetitionType {
-  AC = 'Ampla Concorrência',
-  PCD = 'Pessoa com Deficiência',
-  PPP = 'Cotas (PPP)'
-}
-
-export enum ConvocationStatus {
-  PENDING = 'Pendente',
-  HIRED = 'Contratado',
-  DECLINED = 'Desistente'
+  ADMIN = 'ADMIN',
+  RH = 'RH',
+  CONSULTA = 'CONSULTA'
 }
 
 export interface User {
   id: string;
-  name: string;
-  username: string;
-  password: string;
-  role: UserRole;
-  lastLogin?: string;
+  nome: string;
+  cpf?: string;
+  email?: string;
+  perfil: UserRole;
+  secretariaId?: string;
+  dataCriacao?: string;
 }
 
-export interface ConvokedPerson {
+export interface PerfilProfissional {
+  demandas: string;
+  competenciasComportamentais: string;
+  formacao: string;
+  competenciasTecnicas: string;
+}
+
+export interface Unidade {
+  uorg: string;
+  siorg: string;
+  nome: string;
+  sigla: string;
+  uorgPai?: string;
+  tipo: 'ORGAO' | 'SECRETARIA' | 'DIRETORIA' | 'COORDENACAO_GERAL' | 'COORDENACAO' | 'DIVISAO' | 'SERVICO' | 'OUTRO';
+}
+
+export interface Carreira {
   id: string;
-  name: string;
+  nome: string;
+  codigoLegal: string;
+  orgaoSupervisor: string;
+}
+
+export interface Cargo {
+  id: string;
+  nome: string;
+  codigoCPNU: string;
+  carreiraId: string;
+  edicaoId: string;
+  escolaridade: 'Médio' | 'Superior';
+  vagasOriginarias: number;
+  vagasAdicionais: number;
+  totalVagas: number;
+}
+
+export interface Portaria {
+  id: string;
+  numero: string;
+  dataPublicacao: string;
+  linkDOU?: string;
+  descricao?: string;
+}
+
+export interface CandidatoNomeado {
+  id: string;
+  nome: string;
   cpf: string;
-  email: string;
-  profile: string;
-  notice: string;
-  competition: CompetitionType;
-  ranking: number;
-  status: ConvocationStatus;
-  createdAt: string; 
+  secretaria: string;
+  diretoria: string;
+  uorgId?: string;
+  cargoId?: string; 
+  portariaId?: string;
+  carreira: string;
+  cargo: string;
+  linkCurriculo?: string;
+  dataImportacao: string;
+  dataPosse?: string;
+  dataExercicio?: string;
+  dataInicioContrato?: string; // Novo: Data oficial de contrato/exercício
+  prorrogacoes?: number;       // Novo: Contador de prorrogações de prazo
 }
 
-export interface LegalParameter {
+export interface EdicaoCPNU {
   id: string;
-  label: string;
-  days: number;
-  description: string;
+  concurso: string; 
+  ano: number;
+  edital: string;
+  situacao: 'Homologado' | 'Em andamento';
 }
 
-export interface EmailConfig {
-  serviceId: string;
-  templateId: string;
-  publicKey: string;
-  sender: string;
-  subject: string;
-  template: string;
-}
-
-export interface Occupation {
+export interface Alocacao {
   id: string;
-  contractedName: string;
-  personId?: string;
-  order: number;
-  slotIndex: number; 
-  startDate: string;
-  endDate: string;
-  competition?: CompetitionType;
-  amendmentTerm?: string;
-  projectedFinalDate: string; 
-  isExtensionRequired: boolean; 
-  terminationReason?: string;
-  status: ContractStatus;
-  lastNotificationDate?: string;
-  notificationsCount?: number;
+  uorgId: string;
+  carreiraId: string;
+  cargoId: string;
+  edicaoId: string;
+  portariaId: string;
+  vagasPrevistas: number;
+  vagasNomeadas: number; 
+  vagasPosses: number;    
+  vagasEfetivadas: number;
+  dataRegistro: string;
+  perfil?: PerfilProfissional; 
+  observacoes?: string;
 }
 
-export interface Vacancy {
+export interface HistoricoAlteracao {
   id: string;
-  code: string;
-  legalBase: string;
-  type: string;
-  maxTermDays: number; 
-  status: VacancyStatus;
-  occupations: Occupation[];
-  creationDate: string;
-  publicNotice: string;
-  agency: string;
-  unit: string;
-  initialQuantity: number; 
-}
-
-export interface AuditLog {
-  id: string;
-  timestamp: string;
-  user: string;
-  action: string;
-  details: string;
+  alocacaoId: string;
+  tipo: 'CRIAÇÃO' | 'EDIÇÃO' | 'EXCLUSÃO';
+  campoAlterado?: string;
+  valorAnterior?: string;
+  valorNovo?: string;
+  dataHora: string;
+  usuarioId: string;
+  usuarioNome: string;
+  justificativa: string;
 }
