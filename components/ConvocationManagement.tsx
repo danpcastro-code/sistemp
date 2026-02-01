@@ -55,9 +55,19 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     setDuplicateError(false);
     
     const formData = new FormData(e.currentTarget);
+    const rawCpf = formData.get('cpf') as string;
+    
+    // Lógica de Preservação de Dados Sensíveis:
+    // Se estivermos editando e o valor enviado contém a máscara (asteriscos),
+    // recuperamos o CPF original para não sobrescrever o dado real com a máscara.
+    let finalCpf = rawCpf;
+    if (editingPerson && rawCpf.includes('*')) {
+      finalCpf = editingPerson.cpf;
+    }
+
     const newCandidateData = {
       name: formData.get('name') as string,
-      cpf: formData.get('cpf') as string,
+      cpf: finalCpf,
       email: formData.get('email') as string,
       profile: formData.get('profile') as string,
       notice: formData.get('notice') as string,
@@ -336,7 +346,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                 </div>
                 <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF (Documento)</label>
-                    <input name="cpf" defaultValue={editingPerson?.cpf} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-mono" placeholder="000.000.000-00"/>
+                    <input name="cpf" defaultValue={editingPerson ? maskCPF(editingPerson.cpf) : ''} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-mono" placeholder="000.000.000-00"/>
                 </div>
                 <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ranking / Classificação</label>
