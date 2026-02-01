@@ -45,7 +45,7 @@ const App: React.FC = () => {
   const [parameters, setParameters] = useState<LegalParameter[]>(INITIAL_PARAMETERS);
   const [agencies, setAgencies] = useState<string[]>(['Ministério da Gestão']);
   const [units, setUnits] = useState<string[]>(['Sede']);
-  const [profiles, setProfiles] = useState<string[]>(['Administrador', 'Professor']);
+  const [profiles, setProfiles] = useState<string[]>(['Professor Visitante', 'Professor Substituto', 'Técnico Especializado']);
   const [convocations, setConvocations] = useState<ConvokedPerson[]>(INITIAL_CONVOKED);
   const [emailConfig, setEmailConfig] = useState<EmailConfig>(DEFAULT_EMAIL_CONFIG);
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -102,17 +102,18 @@ const App: React.FC = () => {
       if (data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
         
-        // CARREGAMENTO SELETIVO: Só sobrescreve se houver dados reais no banco
-        if (data.vacancies && data.vacancies.length > 0) setVacancies(data.vacancies);
-        if (data.parameters && data.parameters.length > 0) setParameters(data.parameters);
-        if (data.agencies && data.agencies.length > 0) setAgencies(data.agencies);
-        if (data.units && data.units.length > 0) setUnits(data.units);
-        if (data.profiles && data.profiles.length > 0) setProfiles(data.profiles);
-        if (data.convocations && data.convocations.length > 0) setConvocations(data.convocations);
+        // CARREGAMENTO SELETIVO COM FALLBACK PARA VALORES INICIAIS CASO ESTEJAM VAZIOS NA NUVEM
+        setVacancies(data.vacancies && data.vacancies.length > 0 ? data.vacancies : INITIAL_VACANCIES);
+        setParameters(data.parameters && data.parameters.length > 0 ? data.parameters : INITIAL_PARAMETERS);
+        setAgencies(data.agencies && data.agencies.length > 0 ? data.agencies : ['Ministério da Gestão']);
+        setUnits(data.units && data.units.length > 0 ? data.units : ['Sede']);
+        setProfiles(data.profiles && data.profiles.length > 0 ? data.profiles : ['Professor Substituto', 'Técnico Especializado']);
+        setConvocations(data.convocations && data.convocations.length > 0 ? data.convocations : INITIAL_CONVOKED);
+        
         if (data.logs) setLogs(data.logs);
         if (data.email_config) setEmailConfig(data.email_config);
         
-        // PROTEÇÃO DE USUÁRIOS: Se o banco estiver vazio, mantém os DEFAULT_USERS
+        // PROTEÇÃO DE USUÁRIOS
         if (data.users && Array.isArray(data.users) && data.users.length > 0) {
           setUsers(data.users);
         } else {
