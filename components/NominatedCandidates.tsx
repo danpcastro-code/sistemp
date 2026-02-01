@@ -22,14 +22,24 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
   const [allocatingId, setAllocatingId] = useState<string | null>(null);
   const [dateModal, setDateModal] = useState<{ id: string, type: 'posse' | 'exercicio' } | null>(null);
   const [contractModal, setContractModal] = useState<CandidatoNomeado | null>(null);
+  const [isNewRecordModalOpen, setIsNewRecordModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
   
   const [editForm, setEditForm] = useState({ uorgId: '', linkCurriculo: '', cargoId: '', portariaId: '' });
   const [contractForm, setContractForm] = useState({ dataInicioContrato: '', prorrogacoes: 0 });
+  const [newRecordForm, setNewRecordForm] = useState({ nome: '', cpf: '', carreira: '', cargo: '', linkCurriculo: '' });
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const isAdmin = user.perfil === UserRole.ADMIN;
+
+  // Função de Máscara (Irreversível para o banco de dados conforme solicitado)
+  const maskCPF = (cpf: string): string => {
+    const cleanCPF = cpf.replace(/\D/g, '');
+    if (cleanCPF.length !== 11) return '***.XXX.XXX-**';
+    // Padrão solicitado: ***.XXX.XXX-** onde XXX são os dígitos centrais
+    return `***.${cleanCPF.substring(3, 6)}.${cleanCPF.substring(6, 9)}-**`;
+  };
 
   const calculateDeadline = (baseDateStr: string, daysToAdd: number): Date => {
     const date = new Date(baseDateStr + 'T12:00:00');
@@ -73,9 +83,28 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
     }
   };
 
+  const handleNewRecordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newCandidate: CandidatoNomeado = {
+      id: Math.random().toString(36).substr(2, 9),
+      nome: newRecordForm.nome,
+      cpf: maskCPF(newRecordForm.cpf), // Aplica máscara na criação
+      carreira: newRecordForm.carreira,
+      cargo: newRecordForm.cargo,
+      linkCurriculo: newRecordForm.linkCurriculo,
+      dataImportacao: new Date().toISOString(),
+      prorrogacoes: 0,
+      secretaria: '',
+      diretoria: ''
+    };
+    onImport([newCandidate]);
+    setIsNewRecordModalOpen(false);
+    setNewRecordForm({ nome: '', cpf: '', carreira: '', cargo: '', linkCurriculo: '' });
+  };
+
   const downloadCSVModel = () => {
     const headers = ["nome", "cpf", "carreira", "cargo", "linkCurriculo"];
-    const exampleRow = ["Ana Souza", "111.222.333-44", "EPPGG", "Analista Pleno", "https://linkedin.com/in/anasouza"];
+    const exampleRow = ["Ana Souza", "11122233344", "EPPGG", "Analista Pleno", "https://linkedin.com/in/anasouza"];
     const csvContent = "\ufeffsep=;\n" + headers.join(";") + "\n" + exampleRow.join(";");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -104,12 +133,14 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
           return {
             id: Math.random().toString(36).substr(2, 9),
             nome: obj.nome || 'N/A',
-            cpf: obj.cpf || '000.000.000-00',
+            cpf: maskCPF(obj.cpf || ''), // Aplica máscara na importação
             carreira: obj.carreira || '',
             cargo: obj.cargo || '',
             linkCurriculo: obj.linkcurriculo || '',
             dataImportacao: new Date().toISOString(),
-            prorrogacoes: 0
+            prorrogacoes: 0,
+            secretaria: '',
+            diretoria: ''
           } as CandidatoNomeado;
         });
         onImport(imported);
@@ -132,15 +163,22 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
         </div>
         
         <div className="flex items-stretch bg-slate-900 rounded-2xl shadow-xl overflow-hidden border border-slate-700">
+          <button onClick={() => setIsNewRecordModalOpen(true)} className="px-6 py-4 bg-blue-600 text-white hover:bg-blue-700 border-r border-slate-700 transition-colors flex items-center justify-center group">
+            <span className="text-xl group-hover:rotate-90 transition-transform">＋</span>
+            <div className="flex flex-col items-start ml-3">
+              <span className="text-[9px] font-black uppercase text-white">Novo Registro</span>
+              <span className="text-[7px] font-bold uppercase text-blue-200 text-left">Cadastro Individual</span>
+            </div>
+          </button>
           <button onClick={downloadCSVModel} className="px-6 py-4 bg-slate-800 text-slate-400 hover:text-white border-r border-slate-700 transition-colors flex items-center justify-center group">
             <span className="text-xl group-hover:scale-110 transition-transform">📊</span>
             <div className="flex flex-col items-start ml-3">
               <span className="text-[9px] font-black uppercase text-white">Baixar Modelo</span>
-              <span className="text-[7px] font-bold uppercase text-slate-500">Formato: Colunas (;)</span>
+              <span className="text-[7px] font-bold uppercase text-slate-500">Formato: CSV (;)</span>
             </div>
           </button>
-          <label className={`cursor-pointer text-white px-8 py-4 font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-3 ${isImporting ? 'opacity-50' : 'hover:bg-blue-600'}`}>
-            <span>📥 Importar Nomeados</span>
+          <label className={`cursor-pointer text-white px-8 py-4 font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-3 ${isImporting ? 'opacity-50' : 'hover:bg-slate-700'}`}>
+            <span>📥 Importar Lote</span>
             <input type="file" ref={fileInputRef} accept=".csv" className="hidden" onChange={handleFileChange} disabled={isImporting} />
           </label>
         </div>
@@ -169,7 +207,7 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
                   <td className="px-10 py-6">
                     <div className="flex flex-col">
                       <span className="text-sm font-black text-slate-800 uppercase tracking-tight">{c.nome}</span>
-                      <span className="text-[8px] text-slate-400 font-bold uppercase">CPF: {c.cpf}</span>
+                      <span className="text-[9px] text-blue-600 font-mono font-bold tracking-tighter">CPF: {c.cpf}</span>
                     </div>
                   </td>
                   <td className="px-10 py-6">
@@ -209,6 +247,43 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* MODAL: NOVO REGISTRO (CADASTRO MANUAL) */}
+      {isNewRecordModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[120] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-xl p-10 shadow-2xl animate-in zoom-in-95">
+            <h3 className="text-2xl font-black uppercase tracking-tight text-slate-900 mb-8 italic">Cadastrar Convocado</h3>
+            <form onSubmit={handleNewRecordSubmit} className="space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                  <input required type="text" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500 uppercase" value={newRecordForm.nome} onChange={e => setNewRecordForm({...newRecordForm, nome: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF (Mascarado Automaticamente)</label>
+                  <input required type="text" maxLength={14} placeholder="000.000.000-00" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" value={newRecordForm.cpf} onChange={e => setNewRecordForm({...newRecordForm, cpf: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Carreira</label>
+                  <input required type="text" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" value={newRecordForm.carreira} onChange={e => setNewRecordForm({...newRecordForm, carreira: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo</label>
+                  <input required type="text" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" value={newRecordForm.cargo} onChange={e => setNewRecordForm({...newRecordForm, cargo: e.target.value})} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Link do Currículo (Lattes/LinkedIn)</label>
+                <input type="url" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" value={newRecordForm.linkCurriculo} onChange={e => setNewRecordForm({...newRecordForm, linkCurriculo: e.target.value})} />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setIsNewRecordModalOpen(false)} className="flex-1 px-4 py-4 text-slate-400 font-black text-[10px] uppercase">Cancelar</button>
+                <button type="submit" className="flex-[2] bg-blue-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase shadow-xl hover:bg-slate-900 transition-all">Salvar e Mascarar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ADMIN: GESTÃO DE CONTRATO */}
       {contractModal && isAdmin && (
