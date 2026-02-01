@@ -33,11 +33,15 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user.perfil === UserRole.ADMIN;
 
-  // Função de Máscara (Irreversível para o banco de dados conforme solicitado)
+  // Função de Máscara Robusta (Privacy by Design)
   const maskCPF = (cpf: string): string => {
+    // Se já estiver mascarado, retorna como está
+    if (cpf.includes('*') || cpf.includes('X')) return cpf;
+    
     const cleanCPF = cpf.replace(/\D/g, '');
     if (cleanCPF.length !== 11) return '***.XXX.XXX-**';
-    // Padrão solicitado: ***.XXX.XXX-** onde XXX são os dígitos centrais
+    
+    // Padrão solicitado: ***.XXX.XXX-** preservando apenas os 6 dígitos centrais para conferência mínima
     return `***.${cleanCPF.substring(3, 6)}.${cleanCPF.substring(6, 9)}-**`;
   };
 
@@ -85,10 +89,11 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
 
   const handleNewRecordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const masked = maskCPF(newRecordForm.cpf);
     const newCandidate: CandidatoNomeado = {
       id: Math.random().toString(36).substr(2, 9),
       nome: newRecordForm.nome,
-      cpf: maskCPF(newRecordForm.cpf), // Aplica máscara na criação
+      cpf: masked, 
       carreira: newRecordForm.carreira,
       cargo: newRecordForm.cargo,
       linkCurriculo: newRecordForm.linkCurriculo,
@@ -133,7 +138,7 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
           return {
             id: Math.random().toString(36).substr(2, 9),
             nome: obj.nome || 'N/A',
-            cpf: maskCPF(obj.cpf || ''), // Aplica máscara na importação
+            cpf: maskCPF(obj.cpf || ''), 
             carreira: obj.carreira || '',
             cargo: obj.cargo || '',
             linkCurriculo: obj.linkcurriculo || '',
@@ -163,7 +168,10 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
         </div>
         
         <div className="flex items-stretch bg-slate-900 rounded-2xl shadow-xl overflow-hidden border border-slate-700">
-          <button onClick={() => setIsNewRecordModalOpen(true)} className="px-6 py-4 bg-blue-600 text-white hover:bg-blue-700 border-r border-slate-700 transition-colors flex items-center justify-center group">
+          <button onClick={() => {
+            setNewRecordForm({ nome: '', cpf: '', carreira: '', cargo: '', linkCurriculo: '' });
+            setIsNewRecordModalOpen(true);
+          }} className="px-6 py-4 bg-blue-600 text-white hover:bg-blue-700 border-r border-slate-700 transition-colors flex items-center justify-center group">
             <span className="text-xl group-hover:rotate-90 transition-transform">＋</span>
             <div className="flex flex-col items-start ml-3">
               <span className="text-[9px] font-black uppercase text-white">Novo Registro</span>
@@ -260,8 +268,17 @@ const NominatedCandidates: React.FC<NominatedCandidatesProps> = ({
                   <input required type="text" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500 uppercase" value={newRecordForm.nome} onChange={e => setNewRecordForm({...newRecordForm, nome: e.target.value})} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF (Mascarado Automaticamente)</label>
-                  <input required type="text" maxLength={14} placeholder="000.000.000-00" className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" value={newRecordForm.cpf} onChange={e => setNewRecordForm({...newRecordForm, cpf: e.target.value})} />
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF (MASCARADO ON-BLUR)</label>
+                  <input 
+                    required 
+                    type="text" 
+                    maxLength={14} 
+                    placeholder="000.000.000-00" 
+                    className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:border-blue-500" 
+                    value={newRecordForm.cpf} 
+                    onChange={e => setNewRecordForm({...newRecordForm, cpf: e.target.value})}
+                    onBlur={() => setNewRecordForm(prev => ({ ...prev, cpf: maskCPF(prev.cpf) }))}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Carreira</label>
