@@ -34,7 +34,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     c.profile.toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a, b) => a.ranking - b.ranking);
 
-  // Função para verificar se um candidato é idêntico a outro já existente
   const checkIsDuplicate = (candidate: Partial<ConvokedPerson>, excludeId?: string) => {
     return convocations.some(existing => {
       if (excludeId && existing.id === excludeId) return false;
@@ -66,7 +65,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
       ranking: Number(formData.get('ranking')),
     };
 
-    // Validar duplicidade integral
     if (checkIsDuplicate(newCandidateData, editingPerson?.id)) {
       setDuplicateError(true);
       return;
@@ -136,7 +134,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
             ranking: parseInt(values[6]?.trim() || '0'),
           };
 
-          // Verifica se já existe na base atual OU se já foi adicionado neste lote
           const isDuplicateInCurrentBatch = newCandidates.some(c => 
             c.name.toLowerCase() === candidateData.name.toLowerCase() && 
             c.cpf.replace(/\D/g,'') === candidateData.cpf.replace(/\D/g,'')
@@ -222,7 +219,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                 <div className="flex-1">
                     <h4 className="text-sm font-black text-amber-900 uppercase tracking-tight mb-2">Segurança de Dados</h4>
                     <p className="text-xs text-amber-800/80 leading-relaxed mb-4">
-                        O sistema rejeita automaticamente registros idênticos (duplicatas integrais) para manter a integridade da auditoria. 
+                        O sistema protege dados sensíveis e rejeita automaticamente registros idênticos para manter a integridade da auditoria. 
                         As colunas devem seguir a ordem: Nome, CPF, Email, Perfil, Edital, Concorrência e Ranking.
                     </p>
                 </div>
@@ -274,7 +271,10 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                     </td>
                     <td className="px-8 py-5">
                         <p className="font-bold text-slate-800">{p.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono tracking-tighter">{maskCPF(p.cpf)} • {p.email}</p>
+                        <p className="text-[10px] text-slate-400 font-mono tracking-tighter flex items-center mt-1">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 mr-2 text-[9px] font-black">CPF: {maskCPF(p.cpf)}</span>
+                            <span>• {p.email}</span>
+                        </p>
                     </td>
                     <td className="px-8 py-5">
                         <div className="flex items-center space-x-2">
@@ -332,33 +332,33 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
               <div className="grid grid-cols-2 gap-5">
                 <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo do Candidato</label>
-                    <input name="name" defaultValue={editingPerson?.name} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all" placeholder="Ex: Maria Oliveira"/>
+                    <input name="name" defaultValue={editingPerson?.name} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-bold" placeholder="Ex: Maria Oliveira"/>
                 </div>
                 <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF</label>
-                    <input name="cpf" defaultValue={editingPerson?.cpf} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all" placeholder="000.000.000-00"/>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CPF (Documento)</label>
+                    <input name="cpf" defaultValue={editingPerson?.cpf} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-mono" placeholder="000.000.000-00"/>
                 </div>
                 <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ranking / Classificação</label>
-                    <input name="ranking" type="number" defaultValue={editingPerson?.ranking} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all" placeholder="1"/>
+                    <input name="ranking" type="number" defaultValue={editingPerson?.ranking} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-bold" placeholder="1"/>
                 </div>
                 <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Edital / Contrato de Origem</label>
-                    <input name="notice" defaultValue={editingPerson?.notice} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all" placeholder="Edital 01/2024"/>
+                    <input name="notice" defaultValue={editingPerson?.notice} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-bold" placeholder="Edital 01/2024"/>
                 </div>
                 <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail para Notificação</label>
-                    <input name="email" type="email" defaultValue={editingPerson?.email} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all" placeholder="candidato@email.com"/>
+                    <input name="email" type="email" defaultValue={editingPerson?.email} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all font-bold" placeholder="candidato@email.com"/>
                 </div>
                 <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Perfil Profissional / Vaga Pretendida</label>
-                    <select name="profile" defaultValue={editingPerson?.profile || profiles[0]} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all bg-white">
+                    <select name="profile" defaultValue={editingPerson?.profile || profiles[0]} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all bg-white font-bold">
                         {profiles.map((p, i) => <option key={i} value={p}>{p}</option>)}
                     </select>
                 </div>
                 <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Concorrência</label>
-                    <select name="competition" defaultValue={editingPerson?.competition || CompetitionType.AC} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all bg-white">
+                    <select name="competition" defaultValue={editingPerson?.competition || CompetitionType.AC} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all bg-white font-bold">
                         <option value={CompetitionType.AC}>Ampla Concorrência</option>
                         <option value={CompetitionType.PCD}>Pessoa com Deficiência (PcD)</option>
                         <option value={CompetitionType.PPP}>Pessoas Pretas ou Pardas (Cotas)</option>
