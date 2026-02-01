@@ -3,9 +3,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Vacancy, VacancyStatus, ContractStatus, Occupation, LegalParameter, ConvokedPerson, ConvocationStatus, UserRole } from '../types';
 import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString } from '../utils';
 import { 
-  Search, Plus, ChevronRight, Building2, Clock, FastForward, Trash2, MapPin, X, FilterX, List, Calendar
+  Search, Plus, ChevronRight, Building2, Clock, FastForward, Trash2, MapPin, X, FilterX, List, Calendar, AlertCircle, Info
 } from 'lucide-react';
-import { differenceInDays, parseISO, startOfDay, format, addYears } from 'date-fns';
+import { differenceInDays, parseISO, startOfDay, format, addYears, isAfter } from 'date-fns';
 
 interface VacancyManagementProps {
   vacancies: Vacancy[];
@@ -37,7 +37,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState('');
-  const [targetSlotInfo, setTargetSlotInfo] = useState<{ slotIndex: number, remainingDays: number } | null>(null);
+  const [targetSlotInfo, setTargetSlotInfo] = useState<{ slotIndex: number, remainingDays: number, lastEndDate?: string } | null>(null);
 
   const [extendingOccId, setExtendingOccId] = useState<string | null>(null);
   const [extAmendmentTerm, setExtAmendmentTerm] = useState('');
@@ -113,6 +113,16 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
   const handleAddContract = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVacancy || !selectedPersonId || !targetSlotInfo) return;
+
+    // REGRA 2: Nova contratação deve ser após a última rescisão (vaga não virgem)
+    if (targetSlotInfo.lastEndDate) {
+      const lastEnd = parseISO(targetSlotInfo.lastEndDate);
+      const newStart = parseISO(formStartDate);
+      if (!isAfter(newStart, lastEnd)) {
+        alert(`Erro Crítico: Para vagas reocupadas, a data de início (${formatDisplayDate(formStartDate)}) deve ser estritamente posterior à data de encerramento do ocupante anterior (${formatDisplayDate(targetSlotInfo.lastEndDate)}).`);
+        return;
+      }
+    }
 
     const contractDuration = differenceInDays(parseISO(formEndDate), parseISO(formStartDate)) + 1;
     if (contractDuration > targetSlotInfo.remainingDays) {
@@ -199,6 +209,14 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
 
     const occ = selectedVacancy.occupations.find(o => o.id === rescindingOccId);
     if (!occ) return;
+
+    // REGRA 1: Data de rescisão deve ser maior que data de contratação
+    const start = parseISO(occ.startDate);
+    const rescind = parseISO(rescindDate);
+    if (!isAfter(rescind, start)) {
+      alert(`Erro de Auditoria: A data de rescisão (${formatDisplayDate(rescindDate)}) deve ser obrigatoriamente posterior à data de início do contrato (${formatDisplayDate(occ.startDate)}).`);
+      return;
+    }
 
     setVacancies(prev => prev.map(v => v.id === selectedVacancy.id ? {
       ...v,
@@ -333,7 +351,14 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
                           } else {
                               setSelectedSlotFilter(idx);
                               if (!activeOcc && canEdit && !isExhausted) {
-                                  setTargetSlotInfo({ slotIndex: idx, remainingDays: remDays });
+                                  const history = selectedVacancy.occupations.filter(o => o.slotIndex === idx);
+                                  const lastOcc = history.length > 0 ? [...history].sort((a,b) => b.order - a.order)[0] : null;
+                                  
+                                  setTargetSlotInfo({ 
+                                    slotIndex: idx, 
+                                    remainingDays: remDays,
+                                    lastEndDate: lastOcc?.endDate
+                                  });
                                   setShowAddContractModal(true);
                               }
                           }
@@ -480,8 +505,13 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
           <div className="bg-white rounded-[2.5rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-200 border-2 border-red-50 relative">
             <button onClick={() => setShowRescindModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-red-600"><X size={20}/></button>
             <h2 className="text-2xl font-black mb-8 text-red-600 uppercase tracking-tighter">Rescisão</h2>
-            <p className="text-xs text-slate-500 mb-8 font-medium leading-relaxed">O saldo do posto será liberado imediatamente para nova ocupação.</p>
+            <p className="text-xs text-slate-500 mb-4 font-medium leading-relaxed">O saldo do posto será liberado imediatamente para nova ocupação.</p>
+            
             <form onSubmit={handleRescindContract} className="space-y-6">
+              <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-start space-x-3 text-red-700">
+                  <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-bold uppercase leading-tight">Atenção: A data de desligamento deve ser posterior ao início do contrato vigente.</p>
+              </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data do Desligamento</label>
                 <input type="date" value={rescindDate} onChange={e => setRescindDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm outline-none font-bold focus:ring-4 focus:ring-red-500/10 transition-all"/>
@@ -548,8 +578,19 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-md w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
             <button onClick={() => setShowAddContractModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-            <h2 className="text-3xl font-black mb-10 text-slate-800 uppercase tracking-tighter">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
+            <h2 className="text-3xl font-black mb-10 text-slate-800 uppercase tracking-tighter leading-tight">Provimento Posto #{targetSlotInfo.slotIndex}</h2>
+            
             <form onSubmit={handleAddContract} className="space-y-8">
+              {targetSlotInfo.lastEndDate && (
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start space-x-3 text-amber-700">
+                    <Info size={18} className="shrink-0 mt-0.5" />
+                    <div className="text-[10px] font-bold uppercase leading-tight">
+                        Posto anteriormente ocupado.<br/>
+                        <span className="text-amber-900">Liberação do Posto: {formatDisplayDate(targetSlotInfo.lastEndDate)}</span>
+                    </div>
+                </div>
+              )}
+
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Candidato Convocado</label>
                 <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50 outline-none font-bold">
