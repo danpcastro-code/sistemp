@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
 import { UserRole, User } from '../types';
-import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info, RefreshCcw } from 'lucide-react';
+import { ShieldCheck, Lock, User as UserIcon, AlertCircle, Info, RefreshCcw, KeyRound } from 'lucide-react';
 
 interface LoginViewProps {
   users: User[];
   onLogin: (user: User) => void;
+  onResetDefaults?: () => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
+const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin, onResetDefaults }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,14 +35,15 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
     if (foundUser) {
       onLogin(foundUser);
     } else {
-      setError('Credenciais inválidas. Tente admin / 123 ou rh / 123.');
+      setError('Credenciais inválidas. Tente admin / 123.');
     }
   };
 
-  const forceReset = () => {
-    if (confirm("Deseja resetar o cache local? Isso forçará o sistema a recarregar as credenciais padrão do servidor.")) {
+  const handleEmergencyReset = () => {
+    if (confirm("Se o banco de dados sobrescreveu os usuários, isso restaurará 'admin' e 'rh' localmente. Prosseguir?")) {
+        onResetDefaults?.();
         localStorage.clear();
-        window.location.reload();
+        alert("Padrões restaurados. Tente logar com admin / 123");
     }
   };
 
@@ -69,7 +71,7 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
                   type="text" 
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Seu identificador (ex: rh)"
+                  placeholder="Seu identificador (ex: admin)"
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
                 />
               </div>
@@ -97,10 +99,10 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
                 </div>
                 <button 
                     type="button" 
-                    onClick={forceReset}
+                    onClick={handleEmergencyReset}
                     className="flex items-center justify-center mt-2 py-2 bg-red-600 text-white rounded-xl text-[10px] uppercase font-black tracking-widest shadow-md active:scale-95 transition-all"
                 >
-                    <RefreshCcw size={12} className="mr-2" /> Forçar Reset de Credenciais
+                    <KeyRound size={12} className="mr-2" /> Restaurar Acesso Padrão
                 </button>
               </div>
             )}
@@ -117,10 +119,10 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin }) => {
             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start space-x-3">
                 <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-[10px] space-y-1">
-                    <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Padrão</p>
+                    <p className="text-blue-900 font-bold uppercase tracking-wider">Acesso Master</p>
                     <div className="pt-1 flex flex-col space-y-0.5 font-bold text-blue-800">
-                        <span className="flex justify-between">ADMIN: <span>admin / 123</span></span>
-                        <span className="flex justify-between">GESTOR RH: <span>rh / 123</span></span>
+                        <span className="flex justify-between">Login: <span>admin</span></span>
+                        <span className="flex justify-between">Senha: <span>123</span></span>
                     </div>
                 </div>
             </div>
