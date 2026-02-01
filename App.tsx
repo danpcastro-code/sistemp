@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const isUpdatingFromRemote = useRef(false);
   const isDirty = useRef(false);
 
-  // Estados Base
+  // Estados Base - Começam com os padrões
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [vacancies, setVacancies] = useState<Vacancy[]>(INITIAL_VACANCIES);
@@ -52,7 +52,6 @@ const App: React.FC = () => {
 
   // MECANISMO DE GRAVAÇÃO (SAVE)
   const saveToCloud = useCallback(async () => {
-    // Não salva se estivermos baixando dados ou se não houver mudanças
     if (isUpdatingFromRemote.current || !isDirty.current) return;
     
     setCloudStatus('syncing');
@@ -71,17 +70,15 @@ const App: React.FC = () => {
           convocations, 
           users, 
           logs, 
-          email_config: emailConfig, // Mapeamento para coluna snake_case
+          email_config: emailConfig,
           updated_at: newTime 
         }, { onConflict: 'id' });
       
       if (!error) {
-          console.log("✔️ Dados sincronizados com a nuvem.");
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("❌ Erro Supabase:", error.message);
           setCloudStatus('error');
       }
     } catch (e) {
@@ -89,17 +86,15 @@ const App: React.FC = () => {
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig]);
 
-  // MECANISMO DE LEITURA (LOAD)
+  // MECANISMO DE LEITURA (LOAD) - PROTEGIDO
   const loadFromCloud = useCallback(async (isSilent = false) => {
-    if (isDirty.current) return; // Não sobrescreve mudanças locais pendentes
-    
+    if (isDirty.current) return;
     if (!isSilent) setCloudStatus('syncing');
     
     try {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).single();
       
       if (error) {
-          // Se não houver registro ID 1, ele será criado no primeiro save
           setCloudStatus('connected');
           return;
       }
@@ -107,15 +102,22 @@ const App: React.FC = () => {
       if (data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
         
-        if (data.vacancies) setVacancies(data.vacancies);
-        if (data.parameters) setParameters(data.parameters);
-        if (data.agencies) setAgencies(data.agencies);
-        if (data.units) setUnits(data.units);
-        if (data.profiles) setProfiles(data.profiles);
-        if (data.convocations) setConvocations(data.convocations);
-        if (data.users) setUsers(data.users);
+        // CARREGAMENTO SELETIVO: Só sobrescreve se houver dados reais no banco
+        if (data.vacancies && data.vacancies.length > 0) setVacancies(data.vacancies);
+        if (data.parameters && data.parameters.length > 0) setParameters(data.parameters);
+        if (data.agencies && data.agencies.length > 0) setAgencies(data.agencies);
+        if (data.units && data.units.length > 0) setUnits(data.units);
+        if (data.profiles && data.profiles.length > 0) setProfiles(data.profiles);
+        if (data.convocations && data.convocations.length > 0) setConvocations(data.convocations);
         if (data.logs) setLogs(data.logs);
         if (data.email_config) setEmailConfig(data.email_config);
+        
+        // PROTEÇÃO DE USUÁRIOS: Se o banco estiver vazio, mantém os DEFAULT_USERS
+        if (data.users && Array.isArray(data.users) && data.users.length > 0) {
+          setUsers(data.users);
+        } else {
+          setUsers(DEFAULT_USERS);
+        }
         
         lastUpdateRef.current = data.updated_at;
         setTimeout(() => { isUpdatingFromRemote.current = false; }, 300);
@@ -126,7 +128,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Timer de Sincronização (Debounce)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (isDirty.current) saveToCloud();
@@ -134,17 +135,14 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [vacancies, parameters, agencies, units, profiles, convocations, users, logs, emailConfig, saveToCloud]);
 
-  // Polling para manter dados atualizados entre abas/usuários
   useEffect(() => {
     loadFromCloud();
     const interval = setInterval(() => loadFromCloud(true), 15000);
     return () => clearInterval(interval);
   }, [loadFromCloud]);
 
-  // Função para marcar que algo mudou
   const markDirty = () => { if (!isUpdatingFromRemote.current) isDirty.current = true; };
 
-  // Handlers Envelopados para disparar o salvamento
   const wrappedSetVacancies = (v: any) => { markDirty(); setVacancies(v); };
   const wrappedSetParameters = (p: any) => { markDirty(); setParameters(p); };
   const wrappedSetAgencies = (a: any) => { markDirty(); setAgencies(a); };
@@ -160,7 +158,6 @@ const App: React.FC = () => {
     setLogs(prev => { markDirty(); return [newLog, ...prev].slice(0, 500); });
   }, [currentUser]);
 
-  // Recuperação de Sessão Local
   useEffect(() => {
     const saved = localStorage.getItem('sistemp_session');
     if (saved) setCurrentUser(JSON.parse(saved));
@@ -170,7 +167,7 @@ const App: React.FC = () => {
     return <LoginView users={users} onLogin={u => {
       setCurrentUser(u);
       localStorage.setItem('sistemp_session', JSON.stringify(u));
-    }} />;
+    }} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
   }
 
   return (
