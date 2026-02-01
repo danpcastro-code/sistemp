@@ -2,11 +2,23 @@
 import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOfDay } from 'date-fns';
 import { Vacancy, Occupation, ContractStatus } from './types';
 
+/**
+ * Aplica máscara de proteção ao CPF: ***.XXX.XXX-**
+ * Garante que apenas os blocos centrais sejam visíveis.
+ */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '';
-  const clean = cpf.replace(/\D/g, '');
-  if (clean.length !== 11) return cpf;
-  return `***.${clean.substring(3, 6)}.${clean.substring(6, 9)}-**`;
+  // Remove tudo que não for dígito
+  const digits = cpf.replace(/\D/g, '');
+  
+  // Se não tiver pelo menos os 11 dígitos padrão, retorna apenas um placeholder de erro/proteção
+  if (digits.length < 11) return '***.***.***-**';
+  
+  // Extrai os blocos: 123 (oculto) . 456 (visível) . 789 (visível) - 00 (oculto)
+  const part1 = digits.substring(3, 6);
+  const part2 = digits.substring(6, 9);
+  
+  return `***.${part1}.${part2}-**`;
 };
 
 export const normalizeString = (str: string): string => {
