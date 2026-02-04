@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig, PSS, GenericParameter } from '../types';
 import { 
-  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel
+  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check
 } from 'lucide-react';
 import { generateId, normalizeString } from '../utils';
 
@@ -44,6 +44,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'users' | 'email' | 'cloud'>('params');
   const [showParamModal, setShowParamModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [copied, setCopied] = useState(false);
   
   const [newParam, setNewParam] = useState<Partial<LegalParameter>>({ 
     label: '', 
@@ -56,6 +57,43 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   });
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
+
+  const REPAIR_SQL = `-- REPARO DE BANCO SISTEMP
+-- Copie e cole este código no 'SQL Editor' do Supabase e clique em 'Run'
+
+-- 1. Cria ou Atualiza a Tabela
+CREATE TABLE IF NOT EXISTS sistemp_data (
+    id bigint PRIMARY KEY,
+    vacancies jsonb DEFAULT '[]'::jsonb,
+    parameters jsonb DEFAULT '[]'::jsonb,
+    convocations jsonb DEFAULT '[]'::jsonb,
+    pss_list jsonb DEFAULT '[]'::jsonb, 
+    users jsonb DEFAULT '[]'::jsonb,
+    agencies jsonb DEFAULT '[]'::jsonb,
+    units jsonb DEFAULT '[]'::jsonb,
+    profiles jsonb DEFAULT '[]'::jsonb,
+    email_config jsonb DEFAULT '{}'::jsonb,
+    logs jsonb DEFAULT '[]'::jsonb,
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+-- 2. Adiciona colunas faltantes se a tabela já existia
+ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
+
+-- 3. Libera permissão de gravação total (Desativa RLS)
+ALTER TABLE sistemp_data DISABLE ROW LEVEL SECURITY;
+
+-- 4. Cria o registro base id=1
+INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(REPAIR_SQL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const checkDependencies = (itemName: string, type: 'agency' | 'unit' | 'profile' | 'param'): boolean => {
     if (!itemName) return false;
@@ -98,7 +136,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     setter(prev => prev.map(i => i.id === item.id ? { ...i, status: i.status === 'active' ? 'inactive' : 'active' } : i));
   };
 
-  // Filtrar parâmetros legais inválidos e mostrar mais recentes primeiro
   const validParameters = useMemo(() => 
     parameters.filter(p => p && p.label && p.label.trim() !== "").reverse()
   , [parameters]);
@@ -201,6 +238,113 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
+      {activeSubTab === 'users' && (
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><Users className="mr-2 text-blue-600" size={18}/> Operadores do Sistema</h3>
+                <button onClick={() => setShowUserModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-md transition-all">+ Novo Operador</button>
+            </div>
+            <div className="space-y-4">
+                {users.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs uppercase">{u.name.substring(0,2)}</div>
+                            <div>
+                                <p className="text-xs font-black text-slate-800">{u.name}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{u.role}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <span className="text-[9px] font-black text-slate-500 uppercase bg-white border border-slate-200 px-2 py-1 rounded-lg">@{u.username}</span>
+                            {u.username !== 'admin' && (
+                                <button onClick={() => setUsers(prev => prev.filter(us => us.id !== u.id))} className="text-slate-300 hover:text-red-600 transition-colors p-3 cursor-pointer"><Trash2 size={18}/></button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      )}
+
+      {activeSubTab === 'email' && (
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-8"><Mail className="mr-2 text-indigo-600" size={18}/> Configuração de Notificações</h3>
+          <div className="space-y-6 max-w-3xl">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Remetente</label>
+                  <input value={emailConfig.sender} onChange={e => setEmailConfig({...emailConfig, sender: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assunto Padrão</label>
+                  <input value={emailConfig.subject} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Template da Mensagem</label>
+                  <textarea rows={6} value={emailConfig.template} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-5 text-sm font-medium bg-slate-50 outline-none resize-none leading-relaxed" />
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Variáveis: {"{nome}, {data_fatal}, {vaga_codigo}"}</p>
+              </div>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'cloud' && (
+        <div className="space-y-6 animate-in fade-in">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Sincronização</h3>
+                <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-black text-slate-800 uppercase">Comunicação com Servidor</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                            {cloudStatus === 'connected' ? 'Sincronização Ativa (Nuvem)' : cloudStatus === 'syncing' ? 'Transmitindo Dados...' : cloudStatus === 'error' ? 'Falha de Conexão' : 'Operação Local'}
+                        </p>
+                    </div>
+                    <div className={`w-4 h-4 rounded-full ${cloudStatus === 'connected' ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : cloudStatus === 'error' ? 'bg-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-slate-300 animate-pulse'}`}></div>
+                </div>
+            </div>
+
+            <div className="bg-white p-10 rounded-[2.5rem] border-2 border-red-100 shadow-xl overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-8 text-red-100"><Database size={120} strokeWidth={1}/></div>
+                <div className="relative z-10">
+                    <div className="flex items-center space-x-3 mb-4">
+                        <ShieldAlert className="text-red-600" size={28}/>
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reparo de Banco (Passo 2)</h3>
+                    </div>
+                    <p className="text-sm text-slate-600 font-medium max-w-xl mb-8 leading-relaxed">
+                        Se você está recebendo erro ao salvar dados (como novos Editais/PSS), seu banco de dados pode estar desatualizado. 
+                        Copie o código abaixo e execute-o no <strong>SQL Editor</strong> do seu painel Supabase.
+                    </p>
+
+                    <div className="bg-slate-900 rounded-[1.5rem] p-6 shadow-inner relative group">
+                        <button 
+                          onClick={handleCopySql}
+                          className="absolute top-4 right-4 flex items-center space-x-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                        >
+                          {copied ? <Check size={14} className="text-green-400"/> : <Copy size={14}/>}
+                          <span>{copied ? 'Copiado!' : 'Copiar Script SQL'}</span>
+                        </button>
+                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto custom-scrollbar max-h-[200px] leading-relaxed py-4 pr-8">
+                            {REPAIR_SQL}
+                        </pre>
+                    </div>
+
+                    <div className="mt-8 flex items-start space-x-4 bg-red-50 p-6 rounded-2xl border border-red-100">
+                        <Info className="text-red-500 shrink-0 mt-1" size={20}/>
+                        <div>
+                            <p className="text-xs font-black text-red-700 uppercase mb-1">Instruções Importantes:</p>
+                            <ul className="text-[11px] text-red-600 font-bold space-y-1 list-disc ml-4 uppercase tracking-tighter">
+                                <li>Isso NÃO apaga seus dados atuais.</li>
+                                <li>Isso libera permissão total de gravação.</li>
+                                <li>Após rodar o script, clique no botão de sincronizar no topo do sistema.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+      
       {/* MODAL: NOVO PRAZO / AMPARO LEGAL */}
       {showParamModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
@@ -267,73 +411,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* BLOCOS RESTANTES */}
-      {activeSubTab === 'users' && (
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><Users className="mr-2 text-blue-600" size={18}/> Operadores do Sistema</h3>
-                <button onClick={() => setShowUserModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-md transition-all">+ Novo Operador</button>
-            </div>
-            <div className="space-y-4">
-                {users.map(u => (
-                    <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs uppercase">{u.name.substring(0,2)}</div>
-                            <div>
-                                <p className="text-xs font-black text-slate-800">{u.name}</p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{u.role}</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                            <span className="text-[9px] font-black text-slate-500 uppercase bg-white border border-slate-200 px-2 py-1 rounded-lg">@{u.username}</span>
-                            {u.username !== 'admin' && (
-                                <button onClick={() => setUsers(prev => prev.filter(us => us.id !== u.id))} className="text-slate-300 hover:text-red-600 transition-colors p-3 cursor-pointer"><Trash2 size={18}/></button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-      )}
-
-      {activeSubTab === 'email' && (
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
-          <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-8"><Mail className="mr-2 text-indigo-600" size={18}/> Configuração de Notificações</h3>
-          <div className="space-y-6 max-w-3xl">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Remetente</label>
-                  <input value={emailConfig.sender} onChange={e => setEmailConfig({...emailConfig, sender: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assunto Padrão</label>
-                  <input value={emailConfig.subject} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Template da Mensagem</label>
-                  <textarea rows={6} value={emailConfig.template} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full border border-slate-200 rounded-2xl p-5 text-sm font-medium bg-slate-50 outline-none resize-none leading-relaxed" />
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Variáveis: {"{nome}, {data_fatal}, {vaga_codigo}"}</p>
-              </div>
-          </div>
-        </div>
-      )}
-
-      {activeSubTab === 'cloud' && (
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Sincronização</h3>
-            <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between">
-                <div>
-                    <p className="text-xs font-black text-slate-800 uppercase">Comunicação com Servidor</p>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                        {cloudStatus === 'connected' ? 'Sincronização Ativa (Nuvem)' : cloudStatus === 'syncing' ? 'Transmitindo Dados...' : 'Operação Local'}
-                    </p>
-                </div>
-                <div className={`w-4 h-4 rounded-full ${cloudStatus === 'connected' ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : 'bg-slate-300 animate-pulse'}`}></div>
-            </div>
-        </div>
-      )}
-
       {/* MODAL USUÁRIO */}
       {showUserModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
@@ -379,7 +456,6 @@ interface ListManagerProps {
 const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items = [], onAdd, onAction, onToggleStatus, icon }) => {
   const [inputValue, setInputValue] = useState('');
 
-  // Filtrar itens vazios e manter ordem de inserção original (sem sort alfabético)
   const filteredItems = useMemo(() => 
     items.filter(i => i && i.name && i.name.trim() !== "")
   , [items]);
