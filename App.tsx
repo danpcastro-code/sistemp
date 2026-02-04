@@ -13,8 +13,11 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
+// --- CONFIGURAÇÃO SUPABASE ---
 const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ";
+// O sistema agora aceita tanto chaves começando com "eyJ" quanto "sb_publishable"
+const SUPABASE_KEY = "sb_publishable_YB__7kiH7SCphKh60wXrrw_XqgYwOS0"; 
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_USERS: User[] = [
@@ -36,6 +39,7 @@ const App: React.FC = () => {
   const lastUpdateRef = useRef<string | null>(null);
   const isUpdatingFromRemote = useRef(false);
   const isDirty = useRef(false);
+  const saveTimeoutRef = useRef<number | null>(null);
 
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -69,31 +73,41 @@ const App: React.FC = () => {
       action,
       details
     };
-    setLogs(prev => [newLog, ...prev]);
+    setLogs(prev => [newLog, ...prev].slice(0, 200));
     isDirty.current = true;
   }, [currentUser]);
 
   const saveToCloud = useCallback(async () => {
     if (isUpdatingFromRemote.current || !isDirty.current) return;
+    
+    // Validação flexível: aceita formatos novos e antigos
+    const isValidKey = SUPABASE_KEY.startsWith("eyJ") || SUPABASE_KEY.startsWith("sb_publishable");
+    if (!isValidKey) {
+      console.error("ERRO: Chave API Supabase em formato desconhecido.");
+      setCloudStatus('error');
+      return;
+    }
+
     setCloudStatus('syncing');
     const newTime = new Date().toISOString();
+    
     try {
       const payload = { 
         id: 1, 
-        vacancies, 
-        parameters, 
-        agencies, 
-        units, 
-        profiles, 
-        convocations, 
-        pss_list: pssList,
-        users, 
-        logs, 
-        email_config: emailConfig,
+        vacancies: JSON.parse(JSON.stringify(vacancies)),
+        parameters: JSON.parse(JSON.stringify(parameters)),
+        agencies: JSON.parse(JSON.stringify(agencies)),
+        units: JSON.parse(JSON.stringify(units)),
+        profiles: JSON.parse(JSON.stringify(profiles)),
+        convocations: JSON.parse(JSON.stringify(convocations)),
+        pss_list: JSON.parse(JSON.stringify(pssList)),
+        users: JSON.parse(JSON.stringify(users)), 
+        logs: JSON.parse(JSON.stringify(logs)),
+        email_config: JSON.parse(JSON.stringify(emailConfig)),
         updated_at: newTime 
       };
 
-      const { error } = await supabase
+      const { error, status } = await supabase
         .from('sistemp_data')
         .upsert(payload, { onConflict: 'id' });
 
@@ -102,11 +116,18 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("Erro Crítico Supabase (UPSERT):", error.message, "Código:", error.code, "Dica:", error.details);
+          console.error("--- FALHA NA GRAVAÇÃO ---");
+          console.error("Status:", status, "Erro:", error.message);
+          
+          if (error.message.includes("column") || error.message.includes("pss_list") || error.message.includes("agencies")) {
+            console.error("DIAGNÓSTICO: Colunas faltantes no banco. Por favor, realize o PASSO 2 em Configurações > Conexão e Nuvem.");
+            alert("⚠️ FALHA DE GRAVAÇÃO: O banco de dados precisa de reparo. Vá em Configurações > Conexão e Nuvem para copiar o código SQL de reparo.");
+          }
+          
           setCloudStatus('error');
       }
     } catch (e) {
-      console.error("Erro Exceção de Gravação Cloud:", e);
+      console.error("Exceção na gravação:", e);
       setCloudStatus('error');
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
@@ -114,43 +135,37 @@ const App: React.FC = () => {
   const loadFromCloud = useCallback(async (isSilent = false) => {
     if (isDirty.current) return;
     if (!isSilent) setCloudStatus('syncing');
+    
     try {
-      const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).single();
+      const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
       
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.warn("Ambiente Virgem: Registro id:1 ainda não existe no servidor.");
-          setCloudStatus('connected');
-          return;
-        }
-        console.error("Erro Crítico Supabase (SELECT):", error.message);
         setCloudStatus('error');
         return;
       }
 
       if (data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
-        
-        const cleanList = (list: any[]) => (list || []).filter(item => item && item.name && item.name.trim() !== "");
+        const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
 
-        setVacancies(data.vacancies || INITIAL_VACANCIES);
-        setParameters((data.parameters || INITIAL_PARAMETERS).filter((p: any) => p && p.label));
-        setAgencies(cleanList(data.agencies) || [{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
-        setUnits(cleanList(data.units) || [{ id: 'u1', name: 'Dep. Computação', status: 'active' }]);
-        setProfiles(cleanList(data.profiles) || [{ id: 'p1', name: 'Professor', status: 'active' }]);
-        setConvocations(data.convocations || INITIAL_CONVOKED);
-        setPssList(data.pss_list || INITIAL_PSS);
-        setUsers(data.users || DEFAULT_USERS);
-        setLogs(data.logs || []);
+        setVacancies(safeArr(data.vacancies));
+        setParameters(safeArr(data.parameters));
+        setAgencies(safeArr(data.agencies));
+        setUnits(safeArr(data.units));
+        setProfiles(safeArr(data.profiles));
+        setConvocations(safeArr(data.convocations));
+        setPssList(safeArr(data.pss_list));
+        setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
+        setLogs(safeArr(data.logs));
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
+        
         lastUpdateRef.current = data.updated_at;
         setCloudStatus('connected');
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 100);
+        setTimeout(() => { isUpdatingFromRemote.current = false; }, 200);
       } else {
         setCloudStatus('connected');
       }
     } catch (e) {
-      console.error("Erro Exceção de Leitura Cloud:", e);
       setCloudStatus('error');
     }
   }, []);
@@ -162,9 +177,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isUpdatingFromRemote.current) {
       isDirty.current = true;
-      const timeout = setTimeout(saveToCloud, 1500); // Salva 1.5s após última mudança
-      return () => clearTimeout(timeout);
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1000);
     }
+    return () => { if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current); };
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
   if (!currentUser) {
@@ -198,7 +214,7 @@ const App: React.FC = () => {
       userName={currentUser.name} 
       onLogout={() => setCurrentUser(null)}
       cloudStatus={cloudStatus}
-      onSync={() => loadFromCloud(false)}
+      onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
       {renderContent()}
     </Layout>
