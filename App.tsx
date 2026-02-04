@@ -78,30 +78,35 @@ const App: React.FC = () => {
     setCloudStatus('syncing');
     const newTime = new Date().toISOString();
     try {
+      const payload = { 
+        id: 1, 
+        vacancies, 
+        parameters, 
+        agencies, 
+        units, 
+        profiles, 
+        convocations, 
+        pss_list: pssList,
+        users, 
+        logs, 
+        email_config: emailConfig,
+        updated_at: newTime 
+      };
+
       const { error } = await supabase
         .from('sistemp_data')
-        .upsert({ 
-          id: 1, 
-          vacancies, 
-          parameters, 
-          agencies, 
-          units, 
-          profiles, 
-          convocations, 
-          pss_list: pssList,
-          users, 
-          logs, 
-          email_config: emailConfig,
-          updated_at: newTime 
-        }, { onConflict: 'id' });
+        .upsert(payload, { onConflict: 'id' });
+
       if (!error) {
           lastUpdateRef.current = newTime;
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
+          console.error("Erro Crítico Supabase (Save):", error.message, error.code, error.details);
           setCloudStatus('error');
       }
     } catch (e) {
+      console.error("Erro Exceção Cloud:", e);
       setCloudStatus('error');
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
@@ -111,11 +116,22 @@ const App: React.FC = () => {
     if (!isSilent) setCloudStatus('syncing');
     try {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).single();
-      if (error) { setCloudStatus('connected'); return; }
+      
+      if (error) {
+        // Erro PGRST116 significa que não encontrou o registro id=1, o que é ok no primeiro acesso.
+        if (error.code === 'PGRST116') {
+          console.warn("Ambiente Virgem: Registro id:1 não encontrado. Preparando inicialização.");
+          setCloudStatus('connected');
+          return;
+        }
+        console.error("Erro Crítico Supabase (Load):", error.message);
+        setCloudStatus('error');
+        return;
+      }
+
       if (data && data.updated_at !== lastUpdateRef.current) {
         isUpdatingFromRemote.current = true;
         
-        // Função auxiliar para limpar arrays de parâmetros genéricos
         const cleanList = (list: any[]) => (list || []).filter(item => item && item.name && item.name.trim() !== "");
 
         setVacancies(data.vacancies || INITIAL_VACANCIES);
@@ -135,6 +151,7 @@ const App: React.FC = () => {
         setCloudStatus('connected');
       }
     } catch (e) {
+      console.error("Erro Exceção Load:", e);
       setCloudStatus('error');
     }
   }, []);
