@@ -102,11 +102,11 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("Erro Crítico Supabase (Save):", error.message, error.code, error.details);
+          console.error("Erro Crítico Supabase (UPSERT):", error.message, "Código:", error.code, "Dica:", error.details);
           setCloudStatus('error');
       }
     } catch (e) {
-      console.error("Erro Exceção Cloud:", e);
+      console.error("Erro Exceção de Gravação Cloud:", e);
       setCloudStatus('error');
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
@@ -118,13 +118,12 @@ const App: React.FC = () => {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).single();
       
       if (error) {
-        // Erro PGRST116 significa que não encontrou o registro id=1, o que é ok no primeiro acesso.
         if (error.code === 'PGRST116') {
-          console.warn("Ambiente Virgem: Registro id:1 não encontrado. Preparando inicialização.");
+          console.warn("Ambiente Virgem: Registro id:1 ainda não existe no servidor.");
           setCloudStatus('connected');
           return;
         }
-        console.error("Erro Crítico Supabase (Load):", error.message);
+        console.error("Erro Crítico Supabase (SELECT):", error.message);
         setCloudStatus('error');
         return;
       }
@@ -151,7 +150,7 @@ const App: React.FC = () => {
         setCloudStatus('connected');
       }
     } catch (e) {
-      console.error("Erro Exceção Load:", e);
+      console.error("Erro Exceção de Leitura Cloud:", e);
       setCloudStatus('error');
     }
   }, []);
@@ -163,7 +162,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isUpdatingFromRemote.current) {
       isDirty.current = true;
-      const timeout = setTimeout(saveToCloud, 2000);
+      const timeout = setTimeout(saveToCloud, 1500); // Salva 1.5s após última mudança
       return () => clearTimeout(timeout);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
