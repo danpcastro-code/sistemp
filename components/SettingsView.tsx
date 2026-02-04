@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig, PSS, GenericParameter } from '../types';
 import { 
-  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check
+  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check, Terminal
 } from 'lucide-react';
 import { generateId, normalizeString } from '../utils';
 
@@ -21,12 +21,89 @@ interface SettingsViewProps {
   convocations: ConvokedPerson[];
   pssList: PSS[];
   onRestoreAll: (data: any) => void;
-  // Fix: Added 'setup_required' to the cloudStatus union type to match App state and Layout component.
   cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected' | 'setup_required';
+  cloudErrorMessage?: string | null;
   onLog: (action: string, details: string) => void;
   emailConfig: EmailConfig;
   setEmailConfig: (e: EmailConfig) => void;
 }
+
+// Fix: Implemented ListManager component to manage generic parameter lists
+interface ListManagerProps {
+  title: string;
+  subtitle: string;
+  items: GenericParameter[];
+  onAdd: (name: string) => void;
+  onAction: (item: GenericParameter) => void;
+  onToggleStatus: (item: GenericParameter) => void;
+  icon: React.ReactNode;
+}
+
+const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items, onAdd, onAction, onToggleStatus, icon }) => {
+  const [inputValue, setInputValue] = useState('');
+  
+  const handleAdd = () => {
+    if (inputValue.trim()) {
+      onAdd(inputValue.trim());
+      setInputValue('');
+    }
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-[450px]">
+      <div className="flex items-center space-x-3 mb-2">
+        <div className="p-2 bg-slate-50 text-slate-500 rounded-xl">{icon}</div>
+        <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{title}</h3>
+      </div>
+      <p className="text-[9px] text-slate-400 font-bold uppercase mb-6 leading-tight">{subtitle}</p>
+      
+      <div className="flex space-x-2 mb-6">
+        <input 
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="Novo item..."
+          className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-blue-500 transition-all"
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+        />
+        <button onClick={handleAdd} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md active:scale-95">
+          <Plus size={18}/>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+        {items.map((item) => (
+          <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${item.status === 'inactive' ? 'bg-slate-50 opacity-60 border-transparent' : 'bg-white border-slate-100'}`}>
+            <span className={`text-[10px] font-bold uppercase truncate max-w-[120px] ${item.status === 'inactive' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+              {item.name}
+            </span>
+            <div className="flex items-center">
+              <button 
+                onClick={() => onToggleStatus(item)}
+                className={`p-1.5 rounded-lg transition-colors mr-1 ${item.status === 'inactive' ? 'text-slate-300 hover:text-blue-500' : 'text-blue-500 hover:bg-blue-50'}`}
+                title={item.status === 'active' ? 'Ocultar item' : 'Mostrar item'}
+              >
+                {item.status === 'inactive' ? <EyeOff size={14}/> : <Eye size={14}/>}
+              </button>
+              <button 
+                onClick={() => onAction(item)}
+                className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Excluir/Inativar"
+              >
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center opacity-20 py-10">
+            <Database size={32} className="mb-2"/>
+            <p className="text-[8px] font-black uppercase">Vazio</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const SettingsView: React.FC<SettingsViewProps> = ({ 
   parameters = [], setParameters, 
@@ -39,6 +116,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   pssList = [],
   onLog,
   cloudStatus,
+  cloudErrorMessage,
   emailConfig,
   setEmailConfig
 }) => {
@@ -59,9 +137,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
 
-  const REPAIR_SQL = `-- REPARO DE BANCO SISTEMP
--- Copie e cole este código no 'SQL Editor' do Supabase e clique em 'Run'
-
+  const REPAIR_SQL = `-- REPARO COMPLETO SISTEMP (COPIE TUDO)
 -- 1. Cria ou Atualiza a Tabela
 CREATE TABLE IF NOT EXISTS sistemp_data (
     id bigint PRIMARY KEY,
@@ -78,16 +154,21 @@ CREATE TABLE IF NOT EXISTS sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Adiciona colunas faltantes se a tabela já existia
+-- 2. Garante colunas novas
 ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
 
--- 3. Libera permissão de gravação total (Desativa RLS)
+-- 3. Libera permissões de rede (Grants)
+GRANT ALL ON TABLE sistemp_data TO anon;
+GRANT ALL ON TABLE sistemp_data TO authenticated;
+GRANT ALL ON TABLE sistemp_data TO service_role;
+
+-- 4. Desativa segurança RLS (Essencial para chaves anon)
 ALTER TABLE sistemp_data DISABLE ROW LEVEL SECURITY;
 
--- 4. Cria o registro base id=1
+-- 5. Garante registro mestre
 INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
 
   const handleCopySql = () => {
@@ -140,6 +221,30 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
   const validParameters = useMemo(() => 
     parameters.filter(p => p && p.label && p.label.trim() !== "").reverse()
   , [parameters]);
+
+  const handleAddParam = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newEntry: LegalParameter = {
+        ...newParam as LegalParameter,
+        id: generateId(),
+    };
+    setParameters(prev => [...prev, newEntry]);
+    setShowParamModal(false);
+    onLog('CONFIGURAÇÃO', `Novo Amparo Legal cadastrado: ${newEntry.label}`);
+    setNewParam({ label: '', days: 0, type: 'administrative', lawRef: '', articleRef: '', legalText: '', status: 'active' });
+  };
+
+  const handleAddUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newUserEntry: User = {
+        ...newUser,
+        id: generateId(),
+    };
+    setUsers(prev => [...prev, newUserEntry]);
+    setShowUserModal(false);
+    onLog('USUÁRIOS', `Novo operador cadastrado: ${newUserEntry.username}`);
+    setNewUser({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -305,16 +410,33 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
                 </div>
             </div>
 
-            <div className="bg-white p-10 rounded-[2.5rem] border-2 border-red-100 shadow-xl overflow-hidden relative">
-                <div className="absolute top-0 right-0 p-8 text-red-100"><Database size={120} strokeWidth={1}/></div>
+            {(cloudStatus === 'error' || cloudStatus === 'setup_required') && cloudErrorMessage && (
+              <div className="bg-red-900 text-white p-8 rounded-[2.5rem] shadow-2xl border-4 border-red-500/30 animate-in slide-in-from-top-4">
+                  <div className="flex items-center space-x-4 mb-4">
+                      <Terminal className="text-red-400" size={32}/>
+                      <h3 className="text-lg font-black uppercase tracking-tighter">Relatório Técnico do Erro</h3>
+                  </div>
+                  <div className="bg-black/30 p-5 rounded-2xl font-mono text-[11px] leading-relaxed break-all">
+                      {cloudErrorMessage}
+                  </div>
+                  <div className="mt-6 flex items-start space-x-3">
+                      <Info size={16} className="text-red-300 shrink-0 mt-0.5"/>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-red-200">
+                          Geralmente este erro ocorre por falta de permissão na tabela ou colunas inexistentes. Siga o Passo 2 abaixo.
+                      </p>
+                  </div>
+              </div>
+            )}
+
+            <div className="bg-white p-10 rounded-[2.5rem] border-2 border-slate-200 shadow-sm overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-8 text-slate-100"><Database size={120} strokeWidth={1}/></div>
                 <div className="relative z-10">
                     <div className="flex items-center space-x-3 mb-4">
-                        <ShieldAlert className="text-red-600" size={28}/>
-                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reparo de Banco (Passo 2)</h3>
+                        <ShieldAlert className="text-blue-600" size={28}/>
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reparo de Banco e Permissões (Passo 2)</h3>
                     </div>
                     <p className="text-sm text-slate-600 font-medium max-w-xl mb-8 leading-relaxed">
-                        Se você está recebendo erro ao salvar dados (como novos Editais/PSS), seu banco de dados pode estar desatualizado. 
-                        Copie o código abaixo e execute-o no <strong>SQL Editor</strong> do seu painel Supabase.
+                        Copie este script atualizado. Ele agora inclui comandos de <strong>GRANT</strong>, que autorizam o seu navegador a ler e escrever na tabela, mesmo sem login direto no banco.
                     </p>
 
                     <div className="bg-slate-900 rounded-[1.5rem] p-6 shadow-inner relative group">
@@ -325,19 +447,21 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
                           {copied ? <Check size={14} className="text-green-400"/> : <Copy size={14}/>}
                           <span>{copied ? 'Copiado!' : 'Copiar Script SQL'}</span>
                         </button>
-                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto custom-scrollbar max-h-[200px] leading-relaxed py-4 pr-8">
+                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto custom-scrollbar max-h-[250px] leading-relaxed py-4 pr-8">
                             {REPAIR_SQL}
                         </pre>
                     </div>
 
-                    <div className="mt-8 flex items-start space-x-4 bg-red-50 p-6 rounded-2xl border border-red-100">
-                        <Info className="text-red-500 shrink-0 mt-1" size={20}/>
+                    <div className="mt-8 flex items-start space-x-4 bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                        <Info className="text-blue-500 shrink-0 mt-1" size={20}/>
                         <div>
-                            <p className="text-xs font-black text-red-700 uppercase mb-1">Instruções Importantes:</p>
-                            <ul className="text-[11px] text-red-600 font-bold space-y-1 list-disc ml-4 uppercase tracking-tighter">
-                                <li>Isso NÃO apaga seus dados atuais.</li>
-                                <li>Isso libera permissão total de gravação.</li>
-                                <li>Após rodar o script, clique no botão de sincronizar no topo do sistema.</li>
+                            <p className="text-xs font-black text-blue-700 uppercase mb-1">Como aplicar este reparo:</p>
+                            <ul className="text-[11px] text-blue-600 font-bold space-y-1 list-decimal ml-4 uppercase tracking-tighter">
+                                <li>Vá no seu painel do Supabase.</li>
+                                <li>Clique no menu <strong>SQL Editor</strong> (ícone de terminal à esquerda).</li>
+                                <li>Clique no ícone de <strong>"+" (New Query)</strong> à direita das abas abertas.</li>
+                                <li>Cole o código copiado e clique no botão azul <strong>RUN</strong> no canto inferior direito.</li>
+                                <li>Verifique se apareceu "Success" e recarregue o sistema.</li>
                             </ul>
                         </div>
                     </div>
@@ -345,178 +469,83 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
             </div>
         </div>
       )}
-      
-      {/* MODAL: NOVO PRAZO / AMPARO LEGAL */}
+
+      {/* Fix: Added missing modals for parameter and user management */}
       {showParamModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-w-xl w-full p-12 shadow-2xl border border-slate-100 animate-in zoom-in duration-200 overflow-y-auto max-h-[90vh] custom-scrollbar">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter leading-none">Nova Parametrização</h2>
-              <button onClick={() => setShowParamModal(false)} className="text-slate-300 hover:text-slate-800 transition-colors"><X size={24}/></button>
-            </div>
-            
-            <form onSubmit={(e) => {
-                e.preventDefault();
-                setParameters(prev => [{ id: generateId(), ...newParam, status: 'active' } as LegalParameter, ...prev]);
-                setShowParamModal(false);
-                onLog('PARAMETRIZAÇÃO', `Novo ${newParam.type === 'legal' ? 'Prazo Legal' : 'Prazo Adm'} criado: ${newParam.label}`);
-            }} className="space-y-6">
-              
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex gap-6">
-                 <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={newParam.type === 'legal'} onChange={() => setNewParam({...newParam, type: 'legal'})} className="w-4 h-4 text-blue-600 mr-2" />
-                    <span className="text-xs font-black uppercase text-slate-700 tracking-tighter">⚖️ Prazo Legal</span>
-                 </label>
-                 <label className="flex items-center cursor-pointer">
-                    <input type="radio" checked={newParam.type === 'administrative'} onChange={() => setNewParam({...newParam, type: 'administrative'})} className="w-4 h-4 text-slate-400 mr-2" />
-                    <span className="text-xs font-black uppercase text-slate-700 tracking-tighter">⚙️ Administrativo</span>
-                 </label>
-              </div>
-
+          <div className="bg-white rounded-[3rem] max-w-lg w-full p-12 shadow-2xl animate-in zoom-in duration-200 relative">
+            <button onClick={() => setShowParamModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-3xl font-black mb-8 text-slate-800 uppercase tracking-tighter">Novo Amparo/Prazo</h2>
+            <form onSubmit={handleAddParam} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rótulo / Identificação</label>
-                  <input value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Ex: Art 2º, IV" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rótulo/Identificador</label>
+                  <input value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Ex: Art 2, IV" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dias Máximos</label>
-                  <input type="number" value={newParam.days || ''} onChange={e => setNewParam({...newParam, days: parseInt(e.target.value)})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Qtd de Dias" />
+                  <input type="number" value={newParam.days} onChange={e => setNewParam({...newParam, days: Number(e.target.value)})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
                 </div>
               </div>
-
-              {newParam.type === 'legal' && (
-                <div className="space-y-4 animate-in slide-in-from-top-2">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lei / Decreto</label>
-                      <input value={newParam.lawRef} onChange={e => setNewParam({...newParam, lawRef: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Ex: Lei 8.745/93" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dispositivo (Art/Inciso)</label>
-                      <input value={newParam.articleRef} onChange={e => setNewParam({...newParam, articleRef: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Ex: Art. 2º, IV" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Texto Normativo Resumido</label>
-                    <textarea rows={3} value={newParam.legalText} onChange={e => setNewParam({...newParam, legalText: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none resize-none" placeholder="Descreva o que a lei diz para este caso..." />
-                  </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fundamentação (Texto de Lei)</label>
+                <textarea value={newParam.legalText} onChange={e => setNewParam({...newParam, legalText: e.target.value})} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none resize-none" rows={3} placeholder="Descreva o trecho da lei..." />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referência (Lei)</label>
+                  <input value={newParam.lawRef} onChange={e => setNewParam({...newParam, lawRef: e.target.value})} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Lei 8.745/93" />
                 </div>
-              )}
-
-              <div className="flex justify-end gap-3 mt-10">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referência (Artigo)</label>
+                  <input value={newParam.articleRef} onChange={e => setNewParam({...newParam, articleRef: e.target.value})} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Art. 2, IV" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowParamModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="px-12 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl">Salvar Parâmetro</button>
+                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Salvar Parametrização</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL USUÁRIO */}
       {showUserModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-200">
-            <h2 className="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Novo Operador</h2>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              setUsers(prev => [...prev, { id: generateId(), ...newUser } as User]);
-              setShowUserModal(false);
-              setNewUser({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
-              onLog('USUÁRIOS', `Novo usuário: ${newUser.username}`);
-            }} className="space-y-4">
-              <input value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Nome Completo"/>
-              <input value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value.toLowerCase()})} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Usuário"/>
-              <input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" placeholder="Senha"/>
-              <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
-                <option value={UserRole.ADMIN}>Administrador</option>
-                <option value={UserRole.HR}>Gestor RH</option>
-                <option value={UserRole.CONSULTANT}>Consulta</option>
-              </select>
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl animate-in zoom-in duration-200 relative">
+            <button onClick={() => setShowUserModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-3xl font-black mb-8 text-slate-800 uppercase tracking-tighter">Novo Operador</h2>
+            <form onSubmit={handleAddUser} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                <input value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Login</label>
+                  <input value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Função/Role</label>
+                  <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                    <option value={UserRole.CONSULTANT}>Consulta</option>
+                    <option value={UserRole.HR}>Operador RH</option>
+                    <option value={UserRole.ADMIN}>Administrador</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha Provisória</label>
+                <input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              </div>
               <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowUserModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="px-10 py-4 bg-slate-900 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl">Criar Acesso</button>
+                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Criar Acesso</button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-interface ListManagerProps {
-    title: string;
-    subtitle: string;
-    items: GenericParameter[];
-    onAdd: (name: string) => void;
-    onAction: (item: GenericParameter) => void;
-    onToggleStatus: (item: GenericParameter) => void;
-    icon: React.ReactNode;
-}
-
-const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items = [], onAdd, onAction, onToggleStatus, icon }) => {
-  const [inputValue, setInputValue] = useState('');
-
-  const filteredItems = useMemo(() => 
-    items.filter(i => i && i.name && i.name.trim() !== "")
-  , [items]);
-
-  const handleAdd = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (inputValue.trim()) {
-      const formatted = inputValue.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-      onAdd(formatted);
-      setInputValue('');
-    }
-  };
-
-  return (
-    <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-full">
-        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center mb-1">{icon} <span className="ml-2">{title}</span></h4>
-        <p className="text-[9px] text-slate-400 font-bold mb-6 uppercase tracking-wider leading-relaxed">{subtitle}</p>
-        
-        <form onSubmit={handleAdd} className="flex space-x-2 mb-6">
-            <input 
-              value={inputValue} 
-              onChange={e => setInputValue(e.target.value)}
-              placeholder="Adicionar..."
-              className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-            />
-            <button type="submit" className="p-3 bg-slate-900 text-white rounded-xl active:scale-90 disabled:opacity-20 transition-all cursor-pointer shadow-lg" disabled={!inputValue.trim()}>
-              <Plus size={16}/>
-            </button>
-        </form>
-
-        <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 custom-scrollbar pr-1">
-            {filteredItems.map((item) => (
-                <div key={item.id} className={`p-4 rounded-2xl flex justify-between items-center group border transition-all ${item.status === 'inactive' ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-100 hover:border-blue-200 shadow-sm'}`}>
-                    <div className="flex flex-col">
-                        <span className={`text-xs font-bold truncate mr-2 ${item.status === 'inactive' ? 'text-slate-400 line-through' : 'text-slate-700'}`} title={item.name}>{item.name}</span>
-                        {item.status === 'inactive' && <span className="text-[8px] font-black uppercase text-red-400 mt-1">Inativo / Legado</span>}
-                    </div>
-                    
-                    <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          type="button" 
-                          onClick={() => onToggleStatus(item)} 
-                          className={`p-2 rounded-lg transition-all ${item.status === 'active' ? 'text-slate-300 hover:text-amber-600 hover:bg-amber-50' : 'text-green-400 hover:text-green-600 hover:bg-green-50'}`}
-                          title={item.status === 'active' ? "Inativar" : "Ativar"}
-                        >
-                            {item.status === 'active' ? <EyeOff size={14}/> : <Eye size={14}/>}
-                        </button>
-                        <button 
-                          type="button" 
-                          onClick={() => onAction(item)} 
-                          className="text-slate-300 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-all"
-                          title="Remover / Processar"
-                        >
-                            <Trash2 size={14}/>
-                        </button>
-                    </div>
-                </div>
-            ))}
-            {filteredItems.length === 0 && <p className="text-[10px] text-slate-300 font-black uppercase text-center py-10 tracking-widest">Nenhum registro</p>}
-        </div>
     </div>
   );
 };
