@@ -15,7 +15,6 @@ import { generateId } from './utils';
 
 // --- CONFIGURAÇÃO SUPABASE ---
 const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
-// O sistema agora aceita tanto chaves começando com "eyJ" quanto "sb_publishable"
 const SUPABASE_KEY = "sb_publishable_YB__7kiH7SCphKh60wXrrw_XqgYwOS0"; 
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -34,10 +33,11 @@ const DEFAULT_EMAIL_CONFIG: EmailConfig = {
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [cloudStatus, setCloudStatus] = useState<'idle' | 'syncing' | 'error' | 'connected'>('idle');
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'syncing' | 'error' | 'connected' | 'setup_required'>('idle');
   
   const lastUpdateRef = useRef<string | null>(null);
   const isUpdatingFromRemote = useRef(false);
+  const isInitialLoadDone = useRef(false);
   const isDirty = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
@@ -78,16 +78,9 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const saveToCloud = useCallback(async () => {
-    if (isUpdatingFromRemote.current || !isDirty.current) return;
+    // Só salva se já tentou carregar e se houver mudanças manuais
+    if (!isInitialLoadDone.current || isUpdatingFromRemote.current || !isDirty.current) return;
     
-    // Validação flexível: aceita formatos novos e antigos
-    const isValidKey = SUPABASE_KEY.startsWith("eyJ") || SUPABASE_KEY.startsWith("sb_publishable");
-    if (!isValidKey) {
-      console.error("ERRO: Chave API Supabase em formato desconhecido.");
-      setCloudStatus('error');
-      return;
-    }
-
     setCloudStatus('syncing');
     const newTime = new Date().toISOString();
     
@@ -107,7 +100,7 @@ const App: React.FC = () => {
         updated_at: newTime 
       };
 
-      const { error, status } = await supabase
+      const { error } = await supabase
         .from('sistemp_data')
         .upsert(payload, { onConflict: 'id' });
 
@@ -116,31 +109,28 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("--- FALHA NA GRAVAÇÃO ---");
-          console.error("Status:", status, "Erro:", error.message);
-          
-          if (error.message.includes("column") || error.message.includes("pss_list") || error.message.includes("agencies")) {
-            console.error("DIAGNÓSTICO: Colunas faltantes no banco. Por favor, realize o PASSO 2 em Configurações > Conexão e Nuvem.");
-            alert("⚠️ FALHA DE GRAVAÇÃO: O banco de dados precisa de reparo. Vá em Configurações > Conexão e Nuvem para copiar o código SQL de reparo.");
+          console.error("Erro Supabase:", error);
+          if (error.message.includes("relation") || error.message.includes("does not exist")) {
+            setCloudStatus('setup_required');
+          } else {
+            setCloudStatus('error');
           }
-          
-          setCloudStatus('error');
       }
     } catch (e) {
-      console.error("Exceção na gravação:", e);
       setCloudStatus('error');
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
-  const loadFromCloud = useCallback(async (isSilent = false) => {
-    if (isDirty.current) return;
-    if (!isSilent) setCloudStatus('syncing');
+  const loadFromCloud = useCallback(async () => {
+    setCloudStatus('syncing');
     
     try {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
       
       if (error) {
-        setCloudStatus('error');
+        console.warn("Aviso: Tabela não encontrada ou erro de conexão. Execute o script SQL de reparo.");
+        setCloudStatus(error.message.includes("relation") ? 'setup_required' : 'error');
+        isInitialLoadDone.current = true;
         return;
       }
 
@@ -160,13 +150,14 @@ const App: React.FC = () => {
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
         
         lastUpdateRef.current = data.updated_at;
-        setCloudStatus('connected');
-        setTimeout(() => { isUpdatingFromRemote.current = false; }, 200);
-      } else {
-        setCloudStatus('connected');
       }
+      
+      setCloudStatus('connected');
+      isInitialLoadDone.current = true;
+      setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
     } catch (e) {
       setCloudStatus('error');
+      isInitialLoadDone.current = true;
     }
   }, []);
 
@@ -175,36 +166,15 @@ const App: React.FC = () => {
   }, [loadFromCloud]);
 
   useEffect(() => {
-    if (!isUpdatingFromRemote.current) {
-      isDirty.current = true;
+    if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1000);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1500);
     }
-    return () => { if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current); };
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
   if (!currentUser) {
     return <LoginView users={users} onLogin={setCurrentUser} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
   }
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />;
-      case 'vacancies':
-        return <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies.filter(a => a.status === 'active').map(a => a.name)} units={units.filter(u => u.status === 'active').map(u => u.name)} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} setAgencies={() => {}} setUnits={() => {}} convocations={convocations} setConvocations={setConvocations} pssList={pssList} userRole={currentUser.role} onLog={addLog} />;
-      case 'convocations':
-        return <ConvocationManagement convocations={convocations} setConvocations={setConvocations} pssList={pssList} setPssList={setPssList} vacancies={vacancies} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} userRole={currentUser.role} onLog={addLog} />;
-      case 'reports':
-        return <ReportsView vacancies={vacancies} convocations={convocations} />;
-      case 'settings':
-        return <SettingsView parameters={parameters} setParameters={setParameters} agencies={agencies} setAgencies={setAgencies} units={units} setUnits={setUnits} profiles={profiles} setProfiles={setProfiles} users={users} setUsers={setUsers} vacancies={vacancies} convocations={convocations} pssList={pssList} onRestoreAll={() => {}} cloudStatus={cloudStatus} onLog={addLog} emailConfig={emailConfig} setEmailConfig={setEmailConfig} />;
-      case 'audit':
-        return <AuditView logs={logs} onClear={() => setLogs([])} />;
-      default:
-        return <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />;
-    }
-  };
 
   return (
     <Layout 
@@ -216,7 +186,12 @@ const App: React.FC = () => {
       cloudStatus={cloudStatus}
       onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
-      {renderContent()}
+      {activeTab === 'dashboard' && <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />}
+      {activeTab === 'vacancies' && <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies.filter(a => a.status === 'active').map(a => a.name)} units={units.filter(u => u.status === 'active').map(u => u.name)} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} setAgencies={() => {}} setUnits={() => {}} convocations={convocations} setConvocations={setConvocations} pssList={pssList} userRole={currentUser.role} onLog={addLog} />}
+      {activeTab === 'convocations' && <ConvocationManagement convocations={convocations} setConvocations={setConvocations} pssList={pssList} setPssList={setPssList} vacancies={vacancies} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} userRole={currentUser.role} onLog={addLog} />}
+      {activeTab === 'reports' && <ReportsView vacancies={vacancies} convocations={convocations} />}
+      {activeTab === 'settings' && <SettingsView parameters={parameters} setParameters={setParameters} agencies={agencies} setAgencies={setAgencies} units={units} setUnits={setUnits} profiles={profiles} setProfiles={setProfiles} users={users} setUsers={setUsers} vacancies={vacancies} convocations={convocations} pssList={pssList} onRestoreAll={() => {}} cloudStatus={cloudStatus} onLog={addLog} emailConfig={emailConfig} setEmailConfig={setEmailConfig} />}
+      {activeTab === 'audit' && <AuditView logs={logs} onClear={() => setLogs([])} />}
     </Layout>
   );
 };
