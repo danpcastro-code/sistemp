@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig, PSS, GenericParameter } from '../types';
 import { 
-  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check, Terminal, KeyRound, AlertCircle
+  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check, Terminal, KeyRound, AlertCircle, DatabaseZap
 } from 'lucide-react';
 import { generateId, normalizeString } from '../utils';
 
@@ -128,31 +128,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     status: 'active'
   });
 
-  const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.CONSULTANT });
+  const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  // Fix for "Cannot find name 'handleItemAction'"
-  const handleItemAction = (item: GenericParameter, setter: any, type: string) => {
-    // Check if item is being used in any vacancy
-    const isUsed = vacancies.some(v => {
-      if (type === 'a') return v.agency === item.name;
-      if (type === 'u') return v.unit === item.name;
-      if (type === 'p') return v.type === item.name;
-      return false;
-    });
+  const REPAIR_SQL = `-- REPARO DEFINITIVO SISTEMP (COPIE E COLE NO SQL EDITOR DO SUPABASE)
 
-    if (isUsed) {
-      alert(`Este item ("${item.name}") está vinculado a um ou mais grupos de vagas e não pode ser removido definitivamente. Sugerimos apenas ocultá-lo clicando no ícone do olho.`);
-      return;
-    }
-
-    if (confirm(`Deseja remover permanentemente o item "${item.name}"? Esta ação não pode ser desfeita.`)) {
-      setter((prev: any) => prev.filter((i: any) => i.id !== item.id));
-      onLog('CONFIGURAÇÃO', `Item "${item.name}" removido das parametrizações.`);
-    }
-  };
-
-  const REPAIR_SQL = `-- REPARO DE BANCO SISTEMP (EXECUTAR NO SQL EDITOR)
--- 1. Cria a Tabela Principal
+-- 1. Cria a tabela mestre com colunas JSONB robustas
 CREATE TABLE IF NOT EXISTS sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
@@ -168,15 +148,18 @@ CREATE TABLE IF NOT EXISTS sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Concede permissões para o acesso público (Anonymous)
+-- 2. GARANTE que a coluna pss_list exista (caso a tabela já existisse sem ela)
+ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
+
+-- 3. Concede permissão total para a API anônima (anon public)
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT ALL ON TABLE sistemp_data TO anon;
 GRANT ALL ON TABLE sistemp_data TO authenticated;
 
--- 3. Desativa segurança RLS (Fundamental para acesso via chave anon)
+-- 4. Desabilita RLS (Obrigatoriamente para aceitar a chave 'anon public')
 ALTER TABLE sistemp_data DISABLE ROW LEVEL SECURITY;
 
--- 4. Cria registro inicial
+-- 5. Garante que a linha de dados id=1 exista
 INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
 
   const handleCopySql = () => {
@@ -185,8 +168,29 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleItemAction = (item: GenericParameter, setter: any, type: string) => {
+    const isUsed = vacancies.some(v => type === 'a' ? v.agency === item.name : type === 'u' ? v.unit === item.name : v.type === item.name);
+    if (isUsed) {
+      alert("Item em uso em algum grupo de vagas. Sugerimos apenas ocultar clicando no ícone do olho.");
+      return;
+    }
+    if (confirm(`Deseja remover permanentemente "${item.name}"?`)) {
+      setter((prev: any) => prev.filter((i: any) => i.id !== item.id));
+      onLog('CONFIGURAÇÃO', `Item "${item.name}" removido.`);
+    }
+  };
+
   const handleToggleStatus = (item: GenericParameter, setter: any) => {
     setter((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, status: i.status === 'active' ? 'inactive' : 'active' } : i));
+  };
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const user: User = { ...newUser, id: generateId() };
+    setUsers(prev => [...prev, user]);
+    setShowUserModal(false);
+    onLog('USUÁRIOS', `Novo operador "${user.name}" adicionado.`);
+    setNewUser({ name: '', username: '', password: '', role: UserRole.HR });
   };
 
   const validParameters = useMemo(() => parameters.filter(p => p && p.label).reverse(), [parameters]);
@@ -203,30 +207,44 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
       {activeSubTab === 'cloud' && (
         <div className="space-y-6 animate-in fade-in">
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Diagnóstico de Conexão</h3>
-                <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${cloudStatus === 'connected' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                        {cloudStatus === 'connected' ? <Check size={20}/> : <AlertCircle className="animate-pulse" size={20}/>}
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Nuvem</h3>
+                
+                {cloudStatus === 'setup_required' || cloudStatus === 'error' ? (
+                  <div className="p-8 bg-red-50 border-2 border-red-500 rounded-[2rem] flex flex-col md:flex-row items-center gap-6 animate-in zoom-in">
+                      <div className="p-4 bg-red-600 text-white rounded-[1.5rem] shadow-xl animate-bounce">
+                          <ShieldAlert size={32} />
                       </div>
-                      <div>
-                        <p className="text-xs font-black text-slate-800 uppercase">Estado Remoto</p>
-                        <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${cloudStatus === 'connected' ? 'text-green-600' : 'text-red-500'}`}>
-                            {cloudStatus === 'connected' ? 'Sincronização Ativa' : cloudStatus === 'setup_required' ? 'Tabela não encontrada' : 'Erro de Comunicação'}
-                        </p>
+                      <div className="flex-1 text-center md:text-left">
+                          <h4 className="text-lg font-black text-red-800 uppercase tracking-tighter">Erro de Gravação Detectado</h4>
+                          <p className="text-xs text-red-700 font-bold leading-relaxed mt-2">
+                             O sistema não conseguiu gravar os dados. Provavelmente a tabela no Supabase é antiga ou não existe. 
+                             Copie o script SQL abaixo e execute no painel do Supabase para destravar.
+                          </p>
                       </div>
-                    </div>
-                    {cloudStatus === 'connected' && <span className="text-[10px] font-black text-green-500 bg-white border border-green-200 px-3 py-1.5 rounded-full animate-pulse shadow-sm">CONECTADO</span>}
-                </div>
+                  </div>
+                ) : (
+                  <div className="p-8 bg-green-50 rounded-[2rem] border border-green-200 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg">
+                          <Check size={24}/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase">Sistema Operacional</p>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">Conexão Estabelecida</p>
+                        </div>
+                      </div>
+                      <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest animate-pulse shadow-sm">Cloud Ativa</span>
+                  </div>
+                )}
             </div>
 
             {cloudErrorMessage && (
               <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-2xl border-4 border-slate-800">
                   <div className="flex items-center space-x-4 mb-4">
                       <Terminal className="text-blue-400" size={32}/>
-                      <h3 className="text-lg font-black uppercase tracking-tighter text-blue-100">Relatório Técnico</h3>
+                      <h3 className="text-lg font-black uppercase tracking-tighter text-blue-100">Relatório de Erro Técnico</h3>
                   </div>
-                  <div className="bg-black/30 p-5 rounded-2xl font-mono text-[11px] leading-relaxed break-all border border-white/5">
+                  <div className="bg-black/30 p-5 rounded-2xl font-mono text-[11px] leading-relaxed break-all border border-white/5 text-blue-200">
                       {cloudErrorMessage}
                   </div>
               </div>
@@ -235,23 +253,105 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
             <div className="bg-white p-10 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
                     <div className="flex items-center space-x-3 mb-4">
-                        <ShieldAlert className="text-indigo-600" size={28}/>
-                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reparo de Banco e Estrutura</h3>
+                        <DatabaseZap className="text-indigo-600" size={28}/>
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script de Reparo de Banco</h3>
                     </div>
                     <p className="text-sm text-slate-600 font-medium max-w-xl mb-8 leading-relaxed">
-                        Se este for um projeto novo no Supabase, você precisa criar a tabela `sistemp_data` para que o sistema possa salvar as informações. Copie o script abaixo e execute-o no <strong>SQL Editor</strong> do seu painel.
+                        1. Vá ao painel do <strong>Supabase</strong> <br/>
+                        2. Clique em <strong>SQL Editor</strong> no menu lateral <br/>
+                        3. Clique em <strong>New Query</strong>, cole o código abaixo e clique em <strong>RUN</strong>.
                     </p>
 
                     <div className="bg-slate-900 rounded-[1.5rem] p-6 relative group border border-slate-800">
-                        <button onClick={handleCopySql} className="absolute top-4 right-4 px-4 py-2 bg-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-all border border-white/5 active:scale-95">
-                          {copied ? <span className="text-green-400">Copiado!</span> : <span className="flex items-center gap-2"><Copy size={12}/> Copiar SQL</span>}
+                        <button onClick={handleCopySql} className="absolute top-4 right-4 px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all border border-indigo-400 active:scale-95 shadow-xl">
+                          {copied ? 'Copiado!' : 'Copiar Script SQL'}
                         </button>
-                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[250px] leading-relaxed py-4 scrollbar-thin">
+                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">
                             {REPAIR_SQL}
                         </pre>
                     </div>
                 </div>
             </div>
+        </div>
+      )}
+
+      {activeSubTab === 'users' && (
+        <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center">
+                <Users className="mr-3 text-blue-600" size={20}/> Operadores do Sistema
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Controle de acesso e níveis de permissão</p>
+            </div>
+            <button onClick={() => setShowUserModal(true)} className="px-5 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all flex items-center">
+              <UserPlus size={14} className="mr-2"/> Adicionar Operador
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {users.map(u => (
+              <div key={u.id} className="p-5 rounded-2xl border border-slate-100 flex items-center justify-between group hover:border-blue-200 transition-all">
+                <div className="flex items-center space-x-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${u.role === UserRole.ADMIN ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                    {u.name.substring(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-slate-800 uppercase">{u.name}</p>
+                    <p className="text-[10px] text-slate-400 font-bold">Login: {u.username} • {u.role === UserRole.ADMIN ? 'Administrador' : u.role === UserRole.HR ? 'Gestor RH' : 'Consulta'}</p>
+                  </div>
+                </div>
+                {u.username !== 'admin' && (
+                  <button onClick={() => setUsers(prev => prev.filter(x => x.id !== u.id))} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                    <Trash2 size={16}/>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'email' && (
+        <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
+          <div className="flex items-center space-x-3 mb-8">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Mail size={24}/></div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Configuração de Notificações</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">E-mails automáticos via EmailJS</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Service ID</label>
+                  <input value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold" placeholder="service_xxxxxx" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Template ID</label>
+                  <input value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold" placeholder="template_xxxxxx" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Public Key</label>
+                  <input value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold" placeholder="user_xxxxxx" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assunto Padrão</label>
+                <input value={emailConfig.subject} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corpo da Mensagem (Template)</label>
+                <textarea value={emailConfig.template} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-4 text-xs font-bold min-h-[120px] resize-none" />
+                <p className="text-[8px] text-slate-400 font-bold uppercase mt-2">Variáveis Aceitas: {'{nome}, {data_fatal}, {edital}, {vaga}'}</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -264,7 +364,7 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {validParameters.map((p) => (
-                <div key={p.id} className="p-6 rounded-3xl border border-slate-100 bg-white shadow-sm hover:border-blue-200 transition-all group">
+                <div key={p.id} className="p-6 rounded-3xl border border-slate-100 bg-white shadow-sm">
                   <p className="font-black text-slate-800 text-sm">{p.label}</p>
                   <p className="text-xl font-black text-blue-600 mt-1">{p.days} Dias</p>
                   <div className="mt-4 pt-4 border-t border-slate-100">
@@ -282,17 +382,40 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
         </div>
       )}
 
-      {/* Modais de Gerenciamento */}
+      {/* MODAL: NOVO PRAZO */}
       {showParamModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-200">
             <h2 className="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Novo Prazo</h2>
             <form onSubmit={(e) => { e.preventDefault(); setParameters(p => [...p, { ...newParam, id: generateId() } as LegalParameter]); setShowParamModal(false); }} className="space-y-4">
               <input value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} placeholder="Rótulo (ex: Art. 2, IV)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
-              <input type="number" value={newParam.days} onChange={e => setNewParam({...newParam, days: Number(e.target.value)})} placeholder="Dias Máximos" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
+              <input type="number" value={newParam.days} onChange={e => setNewParam({...newParam, days: Number(e.target.value)})} placeholder="Dias" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
               <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowParamModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
                 <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NOVO USUÁRIO */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-200">
+            <h2 className="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Novo Operador</h2>
+            <form onSubmit={handleSaveUser} className="space-y-4">
+              <input value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="Nome Completo" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
+              <input value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="Usuário (Login)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
+              <input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="Senha de Acesso" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" required />
+              <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                <option value={UserRole.HR}>Gestor RH</option>
+                <option value={UserRole.ADMIN}>Administrador</option>
+                <option value={UserRole.CONSULTANT}>Consulta</option>
+              </select>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setShowUserModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
+                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95">Salvar Operador</button>
               </div>
             </form>
           </div>
