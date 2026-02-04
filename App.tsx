@@ -13,9 +13,9 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// --- CONFIGURAÇÃO SUPABASE ---
-const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
-const SUPABASE_KEY = "sb_publishable_YB__7kiH7SCphKh60wXrrw_XqgYwOS0"; 
+// --- CONFIGURAÇÃO SUPABASE ATUALIZADA ---
+const SUPABASE_URL = "https://xsbpynwtlhntnafnmnbs.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ"; 
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -110,7 +110,9 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          setCloudErrorMessage(error.message);
+          console.error("Erro Supabase:", error);
+          setCloudErrorMessage(`Erro ${error.code}: ${error.message}`);
+          
           if (error.message.includes("relation") || error.message.includes("does not exist")) {
             setCloudStatus('setup_required');
           } else {
@@ -119,7 +121,7 @@ const App: React.FC = () => {
       }
     } catch (e: any) {
       setCloudStatus('error');
-      setCloudErrorMessage(e.message || "Erro desconhecido na conexão.");
+      setCloudErrorMessage(e.message || "Falha na conexão com o Supabase.");
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
@@ -160,7 +162,7 @@ const App: React.FC = () => {
       setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
     } catch (e: any) {
       setCloudStatus('error');
-      setCloudErrorMessage(e.message || "Falha ao ler dados da nuvem.");
+      setCloudErrorMessage("Falha crítica ao carregar dados remotos.");
       isInitialLoadDone.current = true;
     }
   }, []);
@@ -172,7 +174,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2000);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2500);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
