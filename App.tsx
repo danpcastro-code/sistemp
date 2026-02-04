@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
 const SUPABASE_URL = "https://mwhctqhjulrlisokxdth.supabase.co";
-const SUPABASE_KEY = "sb_publishable_I6orZsgeBZX0QRvhrQ5d-A_Jng0xH2s";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_USERS: User[] = [
