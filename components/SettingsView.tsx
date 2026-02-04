@@ -373,16 +373,29 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
               </button>
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {validParameters.map((p) => (
-                <div key={p.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50/30 hover:bg-white hover:shadow-md transition-all flex flex-col justify-between group">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{p.lawRef || 'Lei 8.745'}</p>
-                    <p className="font-bold text-slate-800 text-xs leading-tight line-clamp-2">{p.label}</p>
+                <div key={p.id} className="p-3.5 rounded-2xl border border-slate-100 bg-white hover:border-blue-200 hover:shadow-sm transition-all flex items-center justify-between group">
+                  <div className="flex items-center space-x-3 overflow-hidden">
+                    <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                      <Gavel size={18}/>
+                    </div>
+                    <div className="truncate">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{p.lawRef || 'Lei 8.745'}</p>
+                      <p className="font-bold text-slate-800 text-xs truncate">{p.label}</p>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-baseline space-x-1">
-                    <span className="text-lg font-black text-blue-600 tracking-tighter">{p.days}</span>
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dias</span>
+                  <div className="flex items-center space-x-3 ml-4">
+                    <div className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-right min-w-[70px]">
+                      <span className="text-xs font-black tracking-tight">{p.days}</span>
+                      <span className="text-[7px] font-black uppercase tracking-widest ml-1">Dias</span>
+                    </div>
+                    <button 
+                      onClick={() => setParameters(prev => prev.filter(item => item.id !== p.id))}
+                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 size={14}/>
+                    </button>
                   </div>
                 </div>
               ))}
