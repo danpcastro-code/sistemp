@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, FileText, Settings, History, Menu, X, Award, LogOut, ShieldCheck, CloudOff, RefreshCw, Zap, Wifi, Save, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, History, Menu, X, Award, LogOut, ShieldCheck, CloudOff, RefreshCw, Zap, Wifi, Save, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { UserRole } from '../types';
 import { format } from 'date-fns';
 
@@ -11,7 +11,7 @@ interface LayoutProps {
   userRole: UserRole;
   userName?: string;
   onLogout: () => void;
-  cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected';
+  cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected' | 'setup_required';
   onSync?: () => void;
 }
 
@@ -94,14 +94,19 @@ const Layout: React.FC<LayoutProps> = ({
 
             <div className="flex items-center pl-6 border-l border-slate-100">
                {cloudStatus === 'connected' ? (
-                 <div className="flex items-center text-green-600 bg-green-50 px-4 py-1.5 rounded-full border-2 border-green-200 shadow-sm group cursor-help">
+                 <div className="flex items-center text-green-600 bg-green-50 px-4 py-1.5 rounded-full border-2 border-green-200 shadow-sm">
                     <Zap size={14} className="text-green-500 mr-2" />
                     <span className="text-[10px] font-black uppercase tracking-widest">Memorizado na Nuvem</span>
                  </div>
                ) : cloudStatus === 'syncing' ? (
                  <div className="flex items-center text-amber-600 bg-amber-50 px-4 py-1.5 rounded-full border-2 border-amber-200 shadow-sm animate-pulse">
                     <RefreshCw size={14} className="mr-2 animate-spin" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Gravando agora...</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Sincronizando...</span>
+                 </div>
+               ) : cloudStatus === 'setup_required' ? (
+                 <div className="flex items-center text-red-600 bg-red-50 px-4 py-1.5 rounded-full border-2 border-red-500 shadow-sm cursor-pointer" onClick={() => setActiveTab('settings')}>
+                    <AlertTriangle size={14} className="mr-2 animate-bounce" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Reparo Necessário (Ver Config)</span>
                  </div>
                ) : cloudStatus === 'error' ? (
                  <div className="flex items-center text-red-600 bg-red-50 px-4 py-1.5 rounded-full border-2 border-red-200 shadow-sm">
