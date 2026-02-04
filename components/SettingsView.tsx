@@ -21,7 +21,8 @@ interface SettingsViewProps {
   convocations: ConvokedPerson[];
   pssList: PSS[];
   onRestoreAll: (data: any) => void;
-  cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected';
+  // Fix: Added 'setup_required' to the cloudStatus union type to match App state and Layout component.
+  cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected' | 'setup_required';
   onLog: (action: string, details: string) => void;
   emailConfig: EmailConfig;
   setEmailConfig: (e: EmailConfig) => void;
@@ -297,10 +298,10 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
                     <div>
                         <p className="text-xs font-black text-slate-800 uppercase">Comunicação com Servidor</p>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                            {cloudStatus === 'connected' ? 'Sincronização Ativa (Nuvem)' : cloudStatus === 'syncing' ? 'Transmitindo Dados...' : cloudStatus === 'error' ? 'Falha de Conexão' : 'Operação Local'}
+                            {cloudStatus === 'connected' ? 'Sincronização Ativa (Nuvem)' : cloudStatus === 'syncing' ? 'Transmitindo Dados...' : cloudStatus === 'error' ? 'Falha de Conexão' : cloudStatus === 'setup_required' ? 'Reparo Necessário' : 'Operação Local'}
                         </p>
                     </div>
-                    <div className={`w-4 h-4 rounded-full ${cloudStatus === 'connected' ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : cloudStatus === 'error' ? 'bg-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-slate-300 animate-pulse'}`}></div>
+                    <div className={`w-4 h-4 rounded-full ${cloudStatus === 'connected' ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : (cloudStatus === 'error' || cloudStatus === 'setup_required') ? 'bg-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-slate-300 animate-pulse'}`}></div>
                 </div>
             </div>
 
