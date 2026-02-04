@@ -1,0 +1,259 @@
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ConvokedPerson, CompetitionType, ConvocationStatus, PSS, Vacancy, ContractStatus, UserRole } from '../types';
+import { generateId, maskCPF, formatDisplayDate } from '../utils';
+import { Search, FileUp, X, Users, Table, RefreshCw, UserX, FileDown, UserPlus, FileSpreadsheet, Trash2, History, AlertTriangle, Archive, EyeOff, Eye, FolderOpen, Briefcase } from 'lucide-react';
+import { isAfter, startOfDay, parseISO } from 'date-fns';
+
+interface ConvocationManagementProps {
+  convocations: ConvokedPerson[];
+  setConvocations: React.Dispatch<React.SetStateAction<ConvokedPerson[]>>;
+  pssList: PSS[];
+  setPssList: React.Dispatch<React.SetStateAction<PSS[]>>;
+  vacancies: Vacancy[];
+  profiles: string[];
+  userRole: UserRole;
+  onLog: (action: string, details: string) => void;
+}
+
+const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocations, setConvocations, pssList, setPssList, vacancies, profiles, userRole, onLog }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'classified' | 'convoked' | 'substitution'>('classified');
+  const [selectedPssId, setSelectedPssId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  
+  const [showPssModal, setShowPssModal] = useState(false);
+  const [showNamingModal, setShowNamingModal] = useState(false);
+  const [showEndOfQueueModal, setShowEndOfQueueModal] = useState(false);
+  const [showDeclineModal, setShowDeclineModal] = useState(false);
+  
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
+  const [namingAct, setNamingAct] = useState('');
+  const [namingDate, setNamingDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  const [targetPerson, setTargetPerson] = useState<ConvokedPerson | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const isAdmin = userRole === UserRole.ADMIN;
+  const canManage = userRole === UserRole.ADMIN || userRole === UserRole.HR;
+  const today = startOfDay(new Date());
+
+  useEffect(() => {
+    setSelectedCandidates([]);
+  }, [selectedPssId, activeSubTab]);
+
+  const handleDownloadTemplate = () => {
+    const headers = "Nome;CPF;Email;Perfil;Edital;Concorrencia;Ranking";
+    const example = "João Silva;12345678900;joao@email.com;Professor Substituto;Edital 01/2024;AC;1";
+    const csvContent = "\ufeff" + headers + "\n" + example;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "modelo_importacao_pss.csv";
+    link.click();
+  };
+
+  const handleAddPSS = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const newPss: PSS = {
+        id: generateId(),
+        title: formData.get('title') as string,
+        validUntil: formData.get('validUntil') as string,
+        isArchived: false,
+        candidates: []
+    };
+    setPssList(prev => [...prev, newPss]);
+    setShowPssModal(false);
+    onLog('PSS', `Novo PSS: ${newPss.title}`);
+  };
+
+  const handleArchivePSS = (id: string) => {
+    const pss = pssList.find(p => p.id === id);
+    if (!pss) return;
+    const newState = !pss.isArchived;
+    if (confirm(`Deseja ${newState ? 'arquivar' : 'restaurar'} "${pss.title}"?`)) {
+      setPssList(prev => prev.map(p => p.id === id ? { ...p, isArchived: newState } : p));
+      if (newState && selectedPssId === id) setSelectedPssId(null);
+    }
+  };
+
+  const handleNamingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedCandidates.length === 0 || !selectedPssId) return;
+    const pss = pssList.find(p => p.id === selectedPssId);
+    if (!pss) return;
+    const newConvocations: ConvokedPerson[] = [];
+    selectedCandidates.forEach(cid => {
+      const candidate = pss.candidates.find(c => c.id === cid);
+      if (candidate) {
+        newConvocations.push({
+          ...candidate,
+          convocationAct: namingAct,
+          convocationDate: namingDate,
+          status: ConvocationStatus.PENDING,
+          pssId: selectedPssId
+        });
+      }
+    });
+    setConvocations(prev => [...prev, ...newConvocations]);
+    setSelectedCandidates([]);
+    setShowNamingModal(false);
+    alert("Nomeação registrada.");
+  };
+
+  const handleConfirmEndOfQueue = () => {
+    if (!targetPerson) return;
+    const targetPssId = targetPerson.pssId || selectedPssId;
+    const targetCpf = targetPerson.cpf;
+
+    setPssList(prevPssList => prevPssList.map(pss => {
+      if (pss.id === targetPssId) {
+        const baseCandidates = pss.candidates.filter(c => !c.isReentry);
+        const N = baseCandidates.length;
+        const updatedOriginals = pss.candidates.map(c => 
+          (c.cpf === targetCpf && !c.isReentry) ? { ...c, status: ConvocationStatus.RECLASSIFIED, originalRanking: c.originalRanking || c.ranking } : c
+        );
+        const allReclassified = updatedOriginals.filter(c => c.status === ConvocationStatus.RECLASSIFIED && !c.isReentry);
+        allReclassified.sort((a, b) => (a.originalRanking || a.ranking) - (b.originalRanking || b.ranking));
+        const reentryEntries = allReclassified.map((orig, idx) => ({
+          ...orig, id: `reentry-${orig.cpf}`, ranking: N + idx + 1, status: ConvocationStatus.PENDING, isReentry: true, originalRanking: orig.originalRanking || orig.ranking
+        }));
+        return { ...pss, candidates: [...updatedOriginals.filter(c => !c.isReentry), ...reentryEntries] };
+      }
+      return pss;
+    }));
+    setConvocations(prev => prev.filter(c => c.id !== targetPerson.id));
+    setShowEndOfQueueModal(false);
+    setTargetPerson(null);
+  };
+
+  const filteredPssList = useMemo(() => pssList.filter(p => p.isArchived === showArchived), [pssList, showArchived]);
+  const currentPss = useMemo(() => pssList.find(p => p.id === selectedPssId), [selectedPssId, pssList]);
+  const selectableCandidates = useMemo(() => {
+    if (!currentPss) return [];
+    return currentPss.candidates.filter(c => c.status === ConvocationStatus.PENDING && !convocations.some(cv => cv.cpf === c.cpf && cv.pssId === selectedPssId));
+  }, [currentPss, convocations, selectedPssId]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200">
+        <button onClick={() => setActiveSubTab('classified')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>Classificação</button>
+        <button onClick={() => setActiveSubTab('convoked')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>Nomeados</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-in fade-in duration-300">
+          <div className="lg:col-span-1">
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm h-fit">
+                  <div className="grid grid-cols-2 gap-2 mb-6 bg-slate-100 p-1 rounded-xl">
+                      <button onClick={() => { setShowArchived(false); setSelectedPssId(null); }} className={`flex items-center justify-center py-2 rounded-lg text-[9px] font-black uppercase ${!showArchived ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><FolderOpen size={12} className="mr-1.5" /> Ativos</button>
+                      <button onClick={() => { setShowArchived(true); setSelectedPssId(null); }} className={`flex items-center justify-center py-2 rounded-lg text-[9px] font-black uppercase ${showArchived ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}><Archive size={12} className="mr-1.5" /> Arquivos</button>
+                  </div>
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
+                      {filteredPssList.map(p => (
+                          <div key={p.id} className="relative group">
+                              <div onClick={() => setSelectedPssId(p.id)} className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
+                                  <p className="text-xs font-black text-slate-800 truncate pr-10">{p.title}</p>
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Validade: {formatDisplayDate(p.validUntil)}</p>
+                              </div>
+                              <div className="absolute right-2 top-2 hidden group-hover:flex space-x-1">
+                                  {canManage && <button onClick={(e) => { e.stopPropagation(); handleArchivePSS(p.id); }} className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 shadow-sm"><Archive size={12} /></button>}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+                  {canManage && !showArchived && <button onClick={() => setShowPssModal(true)} className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 rounded-xl text-[9px] font-black uppercase text-slate-400 hover:text-blue-600 transition-all">+ Novo PSS</button>}
+              </div>
+          </div>
+
+          <div className="lg:col-span-3">
+              {selectedPssId ? (
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
+                  {activeSubTab === 'classified' ? (
+                    <>
+                      <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+                          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Classificação</h2>
+                          <div className="flex space-x-2">
+                              {selectedCandidates.length > 0 && <button onClick={() => setShowNamingModal(true)} className="px-6 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl">Nomear ({selectedCandidates.length})</button>}
+                              <button onClick={handleDownloadTemplate} className="p-3 bg-white border border-slate-200 rounded-xl text-blue-600 shadow-sm"><FileDown size={18}/></button>
+                          </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                                <tr>
+                                    <th className="px-8 py-4 w-12 text-center"><input type="checkbox" checked={selectableCandidates.length > 0 && selectedCandidates.length === selectableCandidates.length} onChange={(e) => setSelectedCandidates(e.target.checked ? selectableCandidates.map(c => c.id) : [])} /></th>
+                                    <th className="px-8 py-4">Rank</th>
+                                    <th className="px-8 py-4">Candidato</th>
+                                    <th className="px-8 py-4 text-right">Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {[...(currentPss?.candidates || [])].sort((a,b) => a.ranking - b.ranking).map(c => {
+                                    const isNamed = convocations.some(cv => cv.cpf === c.cpf && cv.pssId === selectedPssId);
+                                    const canSelect = c.status === ConvocationStatus.PENDING && !isNamed;
+                                    return (
+                                        <tr key={c.id} className={`hover:bg-slate-50 ${!canSelect ? 'opacity-40' : ''}`}>
+                                            <td className="px-8 py-4 text-center">{canSelect && <input type="checkbox" checked={selectedCandidates.includes(c.id)} onChange={() => setSelectedCandidates(prev => prev.includes(c.id) ? prev.filter(i => i !== c.id) : [...prev, c.id])} />}</td>
+                                            <td className="px-8 py-4 font-black text-blue-600">{c.ranking}º</td>
+                                            <td className="px-8 py-4">
+                                                <p className="text-xs font-bold text-slate-800">{c.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-mono">{maskCPF(c.cpf)}</p>
+                                            </td>
+                                            <td className="px-8 py-4 text-right"><span className="text-[9px] font-black uppercase px-2 py-1 rounded border">{isNamed ? 'Nomeado' : 'Habilitado'}</span></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-8"><p className="text-center text-slate-400 text-xs font-bold">Navegue pelas abas superiores.</p></div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-32 flex flex-col items-center justify-center text-center">
+                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-8"><FileSpreadsheet size={48} className="text-slate-200"/></div>
+                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-2">Selecione um Edital</h3>
+                </div>
+              )}
+          </div>
+      </div>
+
+      {showPssModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl animate-in zoom-in duration-300">
+            <h2 className="text-3xl font-black mb-8 text-slate-800 uppercase tracking-tighter">Novo PSS</h2>
+            <form onSubmit={handleAddPSS} className="space-y-6">
+              <input name="title" required className="w-full border border-slate-200 rounded-2xl p-4 font-bold bg-slate-50" placeholder="Título" />
+              <input type="date" name="validUntil" required className="w-full border border-slate-200 rounded-2xl p-4 font-bold bg-slate-50" />
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowPssModal(false)} className="px-6 py-4 font-bold text-slate-400">CANCELAR</button>
+                <button type="submit" className="px-12 py-4 bg-blue-600 text-white font-black rounded-2xl">CRIAR</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showNamingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl animate-in zoom-in duration-200">
+            <h2 className="text-3xl font-black mb-8 text-slate-800 uppercase tracking-tighter">Nomear</h2>
+            <form onSubmit={handleNamingSubmit} className="space-y-6">
+              <input value={namingAct} onChange={e => setNamingAct(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 font-bold bg-slate-50" placeholder="Ato / Portaria" />
+              <input type="date" value={namingDate} onChange={e => setNamingDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 font-bold bg-slate-50" />
+              <div className="flex justify-end gap-3 mt-10">
+                <button type="button" onClick={() => setShowNamingModal(false)} className="px-6 py-4 font-bold text-slate-400">CANCELAR</button>
+                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl">CONFIRMAR</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ConvocationManagement;
