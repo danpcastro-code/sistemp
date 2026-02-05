@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { Vacancy, ConvokedPerson, ContractStatus } from '../types';
-import { maskCPF, calculateDaysUsed, formatDisplayDate } from '../utils';
+import { maskCPF, calculateDaysUsed, formatDisplayDate, parseISO, startOfDay } from '../utils';
 import { FileText, Download, Filter, Search, Briefcase, Calendar, Clock, ArrowUpDown, Info, MapPin } from 'lucide-react';
-import { format, parseISO, differenceInDays, startOfDay } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 
 interface ReportsViewProps {
   vacancies: Vacancy[];
