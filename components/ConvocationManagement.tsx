@@ -36,7 +36,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset de seleção ao trocar de contexto
   useEffect(() => {
     setSelectedCandidates([]);
   }, [selectedPssId, activeSubTab]);
@@ -44,7 +43,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
   const currentPss = useMemo(() => pssList.find(p => p.id === selectedPssId), [selectedPssId, pssList]);
   const filteredPssList = useMemo(() => pssList.filter(p => p.isArchived === showArchived), [pssList, showArchived]);
 
-  // Lista de Candidatos Chamados (Ativos no fluxo de nomeação)
   const nominatedCandidates = useMemo(() => {
     if (!selectedPssId) return [];
     return convocations.filter(c => 
@@ -53,11 +51,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     );
   }, [convocations, selectedPssId]);
 
-  // Lógica do Monitor de Substituição (Pareamento de vagas livres com próximos classificados)
   const substitutionData = useMemo(() => {
     if (!selectedPssId || !currentPss) return { totalVacant: 0, pairings: [] };
-    
-    // 1. Identificar postos vagos
     const pssVacancies = vacancies.filter(v => v.pssId === selectedPssId);
     const vacantSlots: { vacancyCode: string, slotIndex: number, competition: CompetitionType }[] = [];
     
@@ -72,7 +67,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
       }
     });
 
-    // 2. Identificar candidatos aptos (não chamados, não desistentes)
     const availablePool = currentPss.candidates.filter(c => {
         const isCalled = nominatedCandidates.some(nc => nc.cpf === c.cpf);
         const isDeclined = c.status === ConvocationStatus.DECLINED;
@@ -80,15 +74,12 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
         return !isCalled && !isDeclined && !isReclassified;
     }).sort((a, b) => a.ranking - b.ranking);
 
-    // 3. Gerar Pareamentos
     const pairings: { vacancyCode: string, slotIndex: number, competition: string, suggestedName: string, suggestedRanking: number, suggestedCpf: string }[] = [];
     const poolCopy = [...availablePool];
-    
     vacantSlots.forEach(slot => {
         if (poolCopy.length > 0) {
             let cIdx = poolCopy.findIndex(c => c.competition === slot.competition);
-            if (cIdx === -1) cIdx = 0; // Fallback se não houver da cota específica
-            
+            if (cIdx === -1) cIdx = 0; 
             const candidate = poolCopy[cIdx];
             pairings.push({ 
                 vacancyCode: slot.vacancyCode, slotIndex: slot.slotIndex, competition: slot.competition,
@@ -97,7 +88,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
             poolCopy.splice(cIdx, 1);
         }
     });
-
     return { totalVacant: vacantSlots.length, pairings };
   }, [selectedPssId, currentPss, vacancies, convocations, nominatedCandidates]);
 
@@ -108,24 +98,16 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
       `#${p.slotIndex};${p.vacancyCode};${p.competition};${p.suggestedName};${p.suggestedRanking};${p.suggestedCpf}`
     ).join("\n");
     navigator.clipboard.writeText(header + body);
-    alert("Lista para Excel copiada com sucesso!");
+    alert("Dados formatados para Excel copiados com sucesso!");
   };
 
   const handleNamingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPssId || !currentPss) return;
-    
     const newConvocations = selectedCandidates.map(cid => {
       const candidate = currentPss.candidates.find(c => c.id === cid);
-      return { 
-        ...candidate!, 
-        convocationAct: namingAct, 
-        convocationDate: namingDate, 
-        status: ConvocationStatus.PENDING, 
-        pssId: selectedPssId 
-      };
+      return { ...candidate!, convocationAct: namingAct, convocationDate: namingDate, status: ConvocationStatus.PENDING, pssId: selectedPssId };
     }) as ConvokedPerson[];
-
     setConvocations(prev => [...prev, ...newConvocations]);
     setSelectedCandidates([]);
     setNamingAct('');
@@ -135,14 +117,9 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
 
   const handleDeclineConfirm = () => {
     if (!declineTarget) return;
-    // Marca como desistente nas convocações e no PSS de origem
     setConvocations(prev => prev.map(c => c.id === declineTarget.id ? { ...c, status: ConvocationStatus.DECLINED } : c));
-    setPssList(prev => prev.map(p => p.id === declineTarget.pssId ? { 
-        ...p, 
-        candidates: p.candidates.map(c => c.cpf === declineTarget.cpf ? { ...c, status: ConvocationStatus.DECLINED } : c) 
-    } : p));
-    
-    onLog('DESISTENCIA', `Candidato ${declineTarget.name} registrou desistência formal.`);
+    setPssList(prev => prev.map(p => p.id === declineTarget.pssId ? { ...p, candidates: p.candidates.map(c => c.cpf === declineTarget.cpf ? { ...c, status: ConvocationStatus.DECLINED } : c) } : p));
+    onLog('DESISTENCIA', `Candidato ${declineTarget.name} registrado como desistente.`);
     setDeclineTarget(null);
     setShowDeclineModal(false);
   };
@@ -158,14 +135,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
   const handleReclassifySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reclassifyTarget || !currentPss) return;
-    
-    // Remove das convocações (revoga ato) e joga pro fim do PSS
     setConvocations(prev => prev.filter(c => c.id !== reclassifyTarget.id));
-    setPssList(prev => prev.map(p => p.id === reclassifyTarget.pssId ? { 
-        ...p, 
-        candidates: p.candidates.map(c => c.cpf === reclassifyTarget.cpf ? { ...c, ranking: newRankingValue, status: ConvocationStatus.RECLASSIFIED } : c) 
-    } : p));
-
+    setPssList(prev => prev.map(p => p.id === reclassifyTarget.pssId ? { ...p, candidates: p.candidates.map(c => c.cpf === reclassifyTarget.cpf ? { ...c, ranking: newRankingValue, status: ConvocationStatus.RECLASSIFIED } : c) } : p));
     onLog('FIM_DE_FILA', `${reclassifyTarget.name} reclassificado para posição ${newRankingValue}.`);
     setShowReclassifyModal(false);
     setReclassifyTarget(null);
@@ -173,7 +144,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
 
   return (
     <div className="space-y-6">
-      {/* NAVEGAÇÃO INTERNA */}
       <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200 shadow-inner">
         <button onClick={() => setActiveSubTab('classified')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><Table size={14} className="mr-2" /> Classificação</button>
         <button onClick={() => setActiveSubTab('convoked')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><UserCheck size={14} className="mr-2" /> Nomeados</button>
@@ -181,7 +151,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-in fade-in duration-300">
-          {/* BARRA LATERAL: SELEÇÃO DE EDITAIS */}
           <div className="lg:col-span-1">
               <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm h-fit">
                   <div className="flex justify-between items-center mb-6"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Editais PSS</h3></div>
@@ -200,11 +169,9 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
               </div>
           </div>
 
-          {/* ÁREA DE CONTEÚDO PRINCIPAL */}
           <div className="lg:col-span-3">
               {selectedPssId ? (
                 <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
-                  {/* TAB: CLASSIFICAÇÃO GERAL */}
                   {activeSubTab === 'classified' && (
                     <>
                       <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
@@ -243,7 +210,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                     </>
                   )}
 
-                  {/* TAB: NOMEADOS (COM BOTÕES DE AÇÃO) */}
                   {activeSubTab === 'convoked' && (
                     <>
                       <div className="p-8 border-b border-slate-100 bg-slate-50/30">
@@ -277,7 +243,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                     </>
                   )}
 
-                  {/* TAB: SUBSTITUIÇÃO (LAYOUT SIMPLIFICADO EXCEL) */}
                   {activeSubTab === 'substitution' && (
                     <div className="animate-in slide-in-from-bottom-2 duration-300">
                         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/10">
@@ -318,7 +283,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
           </div>
       </div>
 
-      {/* MODAL: NOMEAÇÃO (Chamamento) */}
+      {/* MODAIS DE AÇÃO (IGUAIS AO AI STUDIOS) */}
       {showNamingModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-slate-100 animate-in zoom-in duration-200">
@@ -337,7 +302,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
         </div>
       )}
 
-      {/* MODAL: RECLASSIFICAÇÃO (Fim de Fila) */}
       {showReclassifyModal && reclassifyTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-amber-100 animate-in zoom-in duration-200">
@@ -359,7 +323,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
         </div>
       )}
 
-      {/* MODAL: CONFIRMAÇÃO DE DESISTÊNCIA */}
       {showDeclineModal && declineTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl relative border border-red-100 animate-in zoom-in duration-200">
