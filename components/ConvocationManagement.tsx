@@ -96,7 +96,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     const header = "Posto;Vaga;Cota Posto;Sugestão Candidato;Ranking;CPF\n";
     const body = substitutionData.pairings.map(p => `${p.slotIndex};${p.vacancyCode};${p.competition};${p.suggestedName};${p.suggestedRanking};${p.suggestedCpf}`).join("\n");
     navigator.clipboard.writeText(header + body);
-    alert("Dados copiados para área de transferência!");
+    alert("Dados formatados para Excel copiados!");
   };
 
   const handleNamingSubmit = (e: React.FormEvent) => {
@@ -180,7 +180,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                     <UserPlus size={16} className="mr-2"/> Nomear Selecionados ({selectedCandidates.length})
                                 </button>
                             )}
-                            <input type="file" ref={fileInputRef} onChange={(e) => {/* Logica de CSV */}} className="hidden" accept=".csv" />
+                            <input type="file" ref={fileInputRef} onChange={(e) => {/* Logica de Importação */}} className="hidden" accept=".csv" />
                             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><FileUp size={18}/></button>
                           </div>
                       </div>
@@ -229,8 +229,12 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                         <td className="px-8 py-4 text-right">
                                             {c.status === ConvocationStatus.PENDING && (
                                               <div className="flex justify-end space-x-2">
-                                                  <button onClick={() => triggerReclassify(c)} className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-600 hover:text-white transition-all"><ArrowDownWideNarrow size={14} /></button>
-                                                  <button onClick={() => { setDeclineTarget(c); setShowDeclineModal(true); }} className="p-2 bg-red-50 text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all"><UserX size={14} /></button>
+                                                  <button onClick={() => triggerReclassify(c)} className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-600 hover:text-white transition-all shadow-sm" title="Fim de Fila (Reclassificar)">
+                                                      <ArrowDownWideNarrow size={14} />
+                                                  </button>
+                                                  <button onClick={() => { setDeclineTarget(c); setShowDeclineModal(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm" title="Registrar Desistência">
+                                                      <UserX size={14} />
+                                                  </button>
                                               </div>
                                             )}
                                         </td>
@@ -248,11 +252,27 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                             <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Sugestão para Substituição</h2><p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Lista simplificada para cópia (Excel)</p></div>
                             <button onClick={copySubstitutionTable} className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center hover:bg-slate-800 transition-all active:scale-95"><Copy size={16} className="mr-2"/> Copiar para Excel</button>
                         </div>
-                        <div className="overflow-x-auto"><table className="w-full text-left text-[11px]"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100"><tr><th className="px-8 py-4">Posto / Grupo</th><th className="px-8 py-4">Cota Posto</th><th className="px-8 py-4">Candidato Sugerido</th><th className="px-8 py-4">Ranking</th><th className="px-8 py-4 text-right">CPF</th></tr></thead><tbody className="divide-y divide-slate-100">
-                                {substitutionData.pairings.map((pair, idx) => (
-                                    <tr key={idx} className="hover:bg-slate-50"><td className="px-8 py-4 font-black text-slate-800">#{pair.slotIndex} ({pair.vacancyCode})</td><td className="px-8 py-4 text-[9px] font-bold uppercase text-slate-400">{pair.competition}</td><td className="px-8 py-4 font-bold text-blue-600">{pair.suggestedName}</td><td className="px-8 py-4 font-black text-slate-800">{pair.suggestedRanking}º</td><td className="px-8 py-4 text-right text-slate-400 font-mono">{maskCPF(pair.suggestedCpf)}</td></tr>
-                                ))}
-                        </tbody></table></div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-[11px]">
+                                <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">
+                                    <tr><th className="px-8 py-4">Posto / Grupo</th><th className="px-8 py-4">Cota Posto</th><th className="px-8 py-4">Candidato Sugerido</th><th className="px-8 py-4">Ranking</th><th className="px-8 py-4 text-right">CPF</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {substitutionData.pairings.map((pair, idx) => (
+                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-8 py-4 font-black text-slate-800">#{pair.slotIndex} ({pair.vacancyCode})</td>
+                                            <td className="px-8 py-4 text-[9px] font-bold uppercase text-slate-400">{pair.competition}</td>
+                                            <td className="px-8 py-4 font-bold text-blue-600">{pair.suggestedName}</td>
+                                            <td className="px-8 py-4 font-black text-slate-800">{pair.suggestedRanking}º</td>
+                                            <td className="px-8 py-4 text-right text-slate-400 font-mono tracking-tighter">{maskCPF(pair.suggestedCpf)}</td>
+                                        </tr>
+                                    ))}
+                                    {substitutionData.totalVacant > 0 && substitutionData.pairings.length === 0 && (
+                                        <tr><td colSpan={5} className="py-20 text-center text-red-300 font-black uppercase text-[10px]">Aguardando novos candidatos aptos na classificação.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                   )}
                 </div>
@@ -262,12 +282,40 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
           </div>
       </div>
 
-      {/* MODAIS (CONFIRMAÇÃO E FIM DE FILA) */}
+      {/* MODAL NOMEAÇÃO EM LOTE */}
+      {showNamingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-slate-100"><button onClick={() => setShowNamingModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter">Atuar na Nomeação</h2><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-8">{selectedCandidates.length} selecionados</p>
+            <form onSubmit={handleNamingSubmit} className="space-y-4">
+              <input value={namingAct} onChange={e => setNamingAct(e.target.value)} required placeholder="Ato / Portaria (ex: Port. 10/2024)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              <input type="date" value={namingDate} onChange={e => setNamingDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              <div className="flex justify-end gap-3 mt-6"><button type="button" onClick={() => setShowNamingModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button><button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl">Confirmar</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RECLASSIFICAÇÃO (FIM DE FILA) */}
+      {showReclassifyModal && reclassifyTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-amber-100"><button onClick={() => setShowReclassifyModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <div className="flex items-center space-x-3 mb-6"><div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ArrowDownWideNarrow size={24}/></div><div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Fim de Fila</h2><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Reclassificação Administrativa</p></div></div>
+            <p className="text-xs text-slate-600 mb-6">Mover <strong>{reclassifyTarget.name}</strong> para o final da lista? A nomeação atual será revogada.</p>
+            <form onSubmit={handleReclassifySubmit} className="space-y-4">
+              <input type="number" value={newRankingValue} onChange={e => setNewRankingValue(Number(e.target.value))} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              <div className="flex justify-end gap-3 mt-8"><button type="button" onClick={() => setShowReclassifyModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button><button type="submit" className="px-10 py-4 bg-amber-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl">Confirmar Fim de Fila</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMAÇÃO DESISTÊNCIA */}
       {showDeclineModal && declineTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl relative border border-red-100"><button onClick={() => setShowDeclineModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-            <div className="flex flex-col items-center text-center"><div className="p-4 bg-red-50 text-red-600 rounded-[2rem] mb-6"><AlertCircle size={40}/></div><h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-tight mb-4">Confirmar Desistência</h2><p className="text-xs text-slate-500 font-medium leading-relaxed mb-8 px-4">Você confirma a desistência definitiva de <strong>{declineTarget.name}</strong>? O candidato será removido da lista de nomeados e inabilitado.</p>
-              <div className="flex flex-col w-full gap-3"><button onClick={handleDeclineConfirm} className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl hover:bg-red-700 transition-all">Sim, Confirmar Desistência</button></div>
+            <div className="flex flex-col items-center text-center"><div className="p-4 bg-red-50 text-red-600 rounded-[2rem] mb-6 shadow-sm"><AlertCircle size={40}/></div><h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-tight mb-4">Confirmar Desistência</h2><p className="text-xs text-slate-500 font-medium leading-relaxed mb-8">Confirmar desistência definitiva de <strong>{declineTarget.name}</strong>? O candidato será inabilitado neste edital.</p>
+              <div className="flex flex-col w-full gap-3"><button onClick={handleDeclineConfirm} className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl hover:bg-red-700 transition-all">Sim, Confirmar Desistência</button><button onClick={() => setShowDeclineModal(false)} className="w-full py-4 bg-white text-slate-400 font-black text-[10px] uppercase rounded-2xl border border-slate-100">Cancelar</button></div>
             </div>
           </div>
         </div>
