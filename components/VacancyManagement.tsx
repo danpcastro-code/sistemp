@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Vacancy, VacancyStatus, ContractStatus, Occupation, LegalParameter, ConvokedPerson, ConvocationStatus, UserRole, PSS } from '../types';
-import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString } from '../utils';
+import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString, parseISO, startOfDay } from '../utils';
 import { 
   Search, Plus, ChevronRight, Building2, Clock, FastForward, Trash2, MapPin, X, FilterX, List, Calendar, AlertCircle, Info, FileText, Layers, CheckCircle
 } from 'lucide-react';
 import { 
   differenceInDays, 
-  parseISO, 
-  startOfDay, 
   format, 
   addYears, 
   isAfter, 
