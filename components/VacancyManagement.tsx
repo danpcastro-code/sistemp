@@ -5,7 +5,16 @@ import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRe
 import { 
   Search, Plus, ChevronRight, Building2, Clock, FastForward, Trash2, MapPin, X, FilterX, List, Calendar, AlertCircle, Info, FileText, Layers, CheckCircle
 } from 'lucide-react';
-import { differenceInDays, parseISO, startOfDay, format, addYears, isAfter, isBefore, isValid } from 'date-fns';
+import { 
+  differenceInDays, 
+  parseISO, 
+  startOfDay, 
+  format, 
+  addYears, 
+  isAfter, 
+  isBefore, 
+  isValid 
+} from 'date-fns';
 
 interface VacancyManagementProps {
   vacancies: Vacancy[];
