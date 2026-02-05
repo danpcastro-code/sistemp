@@ -1,6 +1,6 @@
 
 import { Vacancy, VacancyStatus, ContractStatus, LegalParameter, ConvokedPerson, CompetitionType, ConvocationStatus, PSS } from './types';
-import { addDays, format, subDays } from 'date-fns';
+import { addDays, format } from 'date-fns';
 
 export const INITIAL_PARAMETERS: LegalParameter[] = [
   { 
@@ -74,8 +74,8 @@ export const INITIAL_CONVOKED: ConvokedPerson[] = [
     ranking: 1,
     status: ConvocationStatus.HIRED,
     convocationAct: 'Portaria 10/2024',
-    convocationDate: format(subDays(today, 20), 'yyyy-MM-dd'),
-    createdAt: format(subDays(today, 10), 'yyyy-MM-dd')
+    convocationDate: format(addDays(today, -20), 'yyyy-MM-dd'),
+    createdAt: format(addDays(today, -10), 'yyyy-MM-dd')
   },
   {
     id: 'c2',
@@ -89,8 +89,8 @@ export const INITIAL_CONVOKED: ConvokedPerson[] = [
     ranking: 2,
     status: ConvocationStatus.PENDING,
     convocationAct: 'Portaria 12/2024',
-    convocationDate: format(subDays(today, 5), 'yyyy-MM-dd'),
-    createdAt: format(subDays(today, 60), 'yyyy-MM-dd')
+    convocationDate: format(addDays(today, -5), 'yyyy-MM-dd'),
+    createdAt: format(addDays(today, -60), 'yyyy-MM-dd')
   }
 ];
 
