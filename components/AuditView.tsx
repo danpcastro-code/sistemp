@@ -2,7 +2,8 @@
 import React, { useMemo } from 'react';
 import { AuditLog } from '../types';
 import { History, Search, Trash2, Clock, User as UserIcon } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { parseISO } from '../utils';
 
 interface AuditViewProps {
   logs: AuditLog[];
