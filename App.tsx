@@ -42,7 +42,20 @@ const App: React.FC = () => {
   const saveTimeoutRef = useRef<number | null>(null);
 
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // PERSISTÊNCIA: Inicializa o usuário a partir do localStorage
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const savedUser = localStorage.getItem('sistemp_session_user');
+    if (savedUser) {
+      try {
+        return JSON.parse(savedUser);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
   const [vacancies, setVacancies] = useState<Vacancy[]>(INITIAL_VACANCIES);
   const [parameters, setParameters] = useState<LegalParameter[]>(INITIAL_PARAMETERS);
   
@@ -59,9 +72,25 @@ const App: React.FC = () => {
   ]);
 
   const [convocations, setConvocations] = useState<ConvokedPerson[]>(INITIAL_CONVOKED);
-  const [pssList, setPssList] = useState<PSS[]>([]); // COMEÇA VAZIO PARA FORÇAR CARGA
+  const [pssList, setPssList] = useState<PSS[]>([]); 
   const [emailConfig, setEmailConfig] = useState<EmailConfig>(DEFAULT_EMAIL_CONFIG);
   const [logs, setLogs] = useState<AuditLog[]>([]);
+
+  // Função para gerenciar o login com persistência
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    localStorage.setItem('sistemp_session_user', JSON.stringify(user));
+    addLog('LOGIN', `Usuário ${user.username} acessou o sistema.`);
+  };
+
+  // Função para gerenciar o logout
+  const handleLogout = () => {
+    if (currentUser) {
+      addLog('LOGOUT', `Usuário ${currentUser.username} saiu do sistema.`);
+    }
+    setCurrentUser(null);
+    localStorage.removeItem('sistemp_session_user');
+  };
 
   const addLog = useCallback((action: string, details: string) => {
     const newLog: AuditLog = {
@@ -129,7 +158,7 @@ const App: React.FC = () => {
         setUnits(safe(data.units));
         setProfiles(safe(data.profiles));
         setConvocations(safe(data.convocations));
-        setPssList(safe(data.pss_list)); // GARANTE ARRAY
+        setPssList(safe(data.pss_list)); 
         setUsers(safe(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safe(data.logs));
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
@@ -154,7 +183,7 @@ const App: React.FC = () => {
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
   if (!currentUser) {
-    return <LoginView users={users} onLogin={setCurrentUser} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
+    return <LoginView users={users} onLogin={handleLogin} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
   }
 
   return (
@@ -163,7 +192,7 @@ const App: React.FC = () => {
       setActiveTab={setActiveTab} 
       userRole={currentUser.role} 
       userName={currentUser.name} 
-      onLogout={() => setCurrentUser(null)}
+      onLogout={handleLogout}
       cloudStatus={cloudStatus}
       onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
