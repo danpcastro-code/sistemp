@@ -117,7 +117,7 @@ const LoginView: React.FC<LoginViewProps> = ({ users = [], onLogin, onResetDefau
         </div>
         
         <p className="text-center text-slate-600 text-[10px] font-bold uppercase mt-8 tracking-widest opacity-50">
-          SisTemp v1.7.6 • Núcleo de Gestão de Pessoas
+          SisTemp v1.8.0 • Núcleo de Gestão de Pessoas
         </p>
       </div>
     </div>
