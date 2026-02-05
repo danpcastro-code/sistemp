@@ -118,7 +118,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
       `#${p.slotIndex} (${p.vacancyCode});${p.competition};${p.suggestedName};${p.suggestedRanking}º;${maskCPF(p.suggestedCpf)}`
     ).join("\n");
     navigator.clipboard.writeText(header + body);
-    alert("Dados formatados para Excel copiados com sucesso!");
+    alert("Dados formatados para Excel copiados!");
   };
 
   const handleNamingSubmit = (e: React.FormEvent) => {
@@ -132,14 +132,14 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     setSelectedCandidates([]);
     setNamingAct('');
     setShowNamingModal(false);
-    onLog('NOMEACAO', `${newConvs.length} candidatos nomeados no PSS.`);
+    onLog('NOMEACAO', `${newConvs.length} nomeados.`);
   };
 
   const handleDeclineConfirm = () => {
     if (!declineTarget) return;
     setConvocations(prev => prev.map(c => c.id === declineTarget.id ? { ...c, status: ConvocationStatus.DECLINED } : c));
     setPssList(prev => prev.map(p => p.id === declineTarget.pssId ? { ...p, candidates: p.candidates.map(c => c.cpf === declineTarget.cpf ? { ...c, status: ConvocationStatus.DECLINED } : c) } : p));
-    onLog('DESISTENCIA', `Desistência de ${declineTarget.name} registrada.`);
+    onLog('DESISTENCIA', `${declineTarget.name} desistiu.`);
     setShowDeclineModal(false);
     setDeclineTarget(null);
   };
@@ -157,41 +157,49 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     setConvocations(prev => prev.filter(x => x.id !== reclassifyTarget.id));
     setPssList(prev => prev.map(p => p.id === reclassifyTarget.pssId ? { ...p, candidates: p.candidates.map(c => c.cpf === reclassifyTarget.cpf ? { ...c, ranking: newRankingValue, status: ConvocationStatus.RECLASSIFIED } : c) } : p));
     setShowReclassifyModal(false);
-    onLog('FIM_DE_FILA', `${reclassifyTarget.name} movido para ranking ${newRankingValue}.`);
+    onLog('FIM_DE_FILA', `${reclassifyTarget.name} para o fim.`);
   };
 
   return (
     <div className="space-y-6">
-      {/* NAVEGAÇÃO DE SUB-ABAS */}
-      <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200 shadow-inner">
-        <button onClick={() => setActiveSubTab('classified')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><Table size={14} className="mr-2" /> Classificação</button>
-        <button onClick={() => setActiveSubTab('convoked')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><UserCheck size={14} className="mr-2" /> Nomeados</button>
-        <button onClick={() => setActiveSubTab('substitution')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'substitution' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><RefreshCw size={14} className="mr-2" /> Substituição</button>
+      {/* CABEÇALHO DE AÇÕES PRINCIPAIS - BOTÃO NOVO EDITAL DESTACADO */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-200 shadow-sm">
+        <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200 shadow-inner">
+          <button onClick={() => setActiveSubTab('classified')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><Table size={14} className="mr-2" /> Classificação</button>
+          <button onClick={() => setActiveSubTab('convoked')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><UserCheck size={14} className="mr-2" /> Nomeados</button>
+          <button onClick={() => setActiveSubTab('substitution')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center ${activeSubTab === 'substitution' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><RefreshCw size={14} className="mr-2" /> Substituição</button>
+        </div>
+
+        <button 
+          onClick={() => setShowAddPssModal(true)} 
+          className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 flex items-center hover:bg-blue-700 transition-all active:scale-95 group"
+        >
+          <Plus size={16} className="mr-2 group-hover:rotate-90 transition-transform duration-300" />
+          Novo Edital PSS
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-in fade-in duration-300">
-          {/* BARRA LATERAL COM BOTÃO NOVO EDITAL */}
+          {/* BARRA LATERAL - LISTAGEM DE EDITAIS */}
           <div className="lg:col-span-1">
               <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm h-fit">
                   <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Editais PSS</h3>
-                      <button onClick={() => setShowAddPssModal(true)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-90" title="Novo Edital">
-                          <Plus size={14} />
-                      </button>
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Editais Ativos</h3>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mb-6 bg-slate-100 p-1 rounded-xl">
-                      <button onClick={() => { setShowArchived(false); setSelectedPssId(null); }} className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${!showArchived ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Ativos</button>
+                      <button onClick={() => { setShowArchived(false); setSelectedPssId(null); }} className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${!showArchived ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Em Aberto</button>
                       <button onClick={() => { setShowArchived(true); setSelectedPssId(null); }} className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${showArchived ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Arquivos</button>
                   </div>
-                  <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1 custom-scrollbar">
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
                       {filteredPssList.map(p => (
-                          <div key={p.id} onClick={() => setSelectedPssId(p.id)} className={`p-4 rounded-2xl border transition-all cursor-pointer ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
+                          <div key={p.id} onClick={() => setSelectedPssId(p.id)} className={`p-4 rounded-2xl border transition-all cursor-pointer ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
                               <p className="text-xs font-black text-slate-800 truncate">{p.title}</p>
                               <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Vigência: {formatDisplayDate(p.validUntil)}</p>
                           </div>
                       ))}
                       {filteredPssList.length === 0 && (
-                          <div className="py-10 text-center opacity-30">
+                          <div className="py-20 text-center opacity-30">
+                              <FileSpreadsheet size={32} className="mx-auto mb-4" />
                               <p className="text-[9px] font-black uppercase tracking-widest">Nenhum Edital</p>
                           </div>
                       )}
@@ -199,21 +207,19 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
               </div>
           </div>
 
-          {/* CONTEÚDO PRINCIPAL (TABELAS LIMPAS) */}
+          {/* CONTEÚDO PRINCIPAL */}
           <div className="lg:col-span-3">
               {selectedPssId ? (
                 <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
                   {activeSubTab === 'classified' && (
                     <>
                       <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                          <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Candidatos Classificados</h2><p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Lista geral de espera</p></div>
-                          <div className="flex space-x-2">
-                            {selectedCandidates.length > 0 && (
-                                <button onClick={() => setShowNamingModal(true)} className="px-6 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl flex items-center hover:bg-blue-700 transition-all active:scale-95">
-                                    <UserPlus size={16} className="mr-2"/> Nomear Selecionados ({selectedCandidates.length})
-                                </button>
-                            )}
-                          </div>
+                          <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Classificação Geral</h2><p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Candidatos aguardando chamamento</p></div>
+                          {selectedCandidates.length > 0 && (
+                              <button onClick={() => setShowNamingModal(true)} className="px-6 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl flex items-center hover:bg-blue-700 transition-all active:scale-95">
+                                  <UserPlus size={16} className="mr-2"/> Nomear ({selectedCandidates.length})
+                              </button>
+                          )}
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -243,8 +249,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                   {activeSubTab === 'convoked' && (
                     <>
                       <div className="p-8 border-b border-slate-100 bg-slate-50/30">
-                          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Candidatos Nomeados</h2>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Gestão de Portarias e Fluxo de Admissão</p>
+                          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Monitor de Nomeações</h2>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Gestão de Portarias e Desistências</p>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -260,7 +266,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                         <td className="px-8 py-4 text-right">
                                             {c.status === ConvocationStatus.PENDING && (
                                               <div className="flex justify-end space-x-2">
-                                                  <button onClick={() => triggerReclassify(c)} className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-600 hover:text-white transition-all shadow-sm" title="Fim de Fila (Reclassificar)"><ArrowDownWideNarrow size={14}/></button>
+                                                  <button onClick={() => triggerReclassify(c)} className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-600 hover:text-white transition-all shadow-sm" title="Fim de Fila"><ArrowDownWideNarrow size={14}/></button>
                                                   <button onClick={() => { setDeclineTarget(c); setShowDeclineModal(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm" title="Registrar Desistência"><UserX size={14}/></button>
                                               </div>
                                             )}
@@ -276,13 +282,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                   {activeSubTab === 'substitution' && (
                     <div className="animate-in slide-in-from-bottom-2 duration-300">
                         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white">
-                            <div>
-                              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Sugestão para Substituição</h2>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Lista simplificada para cópia (Excel)</p>
-                            </div>
-                            <button onClick={copySubstitutionTable} className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center hover:bg-slate-800 transition-all active:scale-95">
-                              <Copy size={16} className="mr-2"/> Copiar para Excel
-                            </button>
+                            <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Sugestão de Reposição</h2><p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Lista automática para preenchimento de vagas</p></div>
+                            <button onClick={copySubstitutionTable} className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center hover:bg-slate-800 transition-all active:scale-95"><Copy size={16} className="mr-2"/> Copiar para Excel</button>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-[11px]">
@@ -299,13 +300,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                             <td className="px-8 py-4 text-right text-slate-400 font-mono tracking-tighter">{maskCPF(pair.suggestedCpf)}</td>
                                         </tr>
                                     ))}
-                                    {substitutionData.pairings.length === 0 && (
-                                      <tr>
-                                        <td colSpan={5} className="py-20 text-center">
-                                          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Aguardando dados de reposição...</p>
-                                        </td>
-                                      </tr>
-                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -316,13 +310,13 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                 <div className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-32 flex flex-col items-center justify-center text-center opacity-60">
                     <FileSpreadsheet size={64} className="text-slate-200 mb-6"/>
                     <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Selecione um Edital PSS</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest">Identifique um edital ativo ou crie um novo para gerenciar a classificação</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest">Ou clique em "NOVO EDITAL PSS" para cadastrar um novo processo</p>
                 </div>
               )}
           </div>
       </div>
 
-      {/* MODAL: NOVO EDITAL PSS */}
+      {/* MODAL: NOVO EDITAL PSS (MANTIDO) */}
       {showAddPssModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-slate-100 animate-in zoom-in duration-200">
@@ -330,7 +324,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
             <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter">Novo Edital PSS</h2>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-8">Cadastro de Processo Seletivo</p>
             <form onSubmit={handleAddPss} className="space-y-4">
-              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Nome/Título do Edital (Ex: PSS 01/2024)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
+              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Nome/Título (Ex: PSS 01/2024)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Válido até:</label>
                 <input type="date" value={newPssDate} onChange={e => setNewPssDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none mt-1" />
@@ -349,35 +343,33 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-slate-100 animate-in zoom-in duration-200">
             <button onClick={() => setShowNamingModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 p-2"><X size={20}/></button>
-            <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter">Atuar na Nomeação</h2>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-8">{selectedCandidates.length} selecionados para chamamento</p>
+            <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter">Gerar Nomeação</h2>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-8">{selectedCandidates.length} candidatos selecionados</p>
             <form onSubmit={handleNamingSubmit} className="space-y-4">
               <input value={namingAct} onChange={e => setNamingAct(e.target.value)} required placeholder="Ato / Portaria (ex: Port. 10/2024)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
               <input type="date" value={namingDate} onChange={e => setNamingDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
               <div className="flex justify-end gap-3 mt-8">
                 <button type="button" onClick={() => setShowNamingModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Confirmar Chamamento</button>
+                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Confirmar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAIS: RECLASSIFICAR / DESISTENCIA (MANTIDOS) */}
       {showReclassifyModal && reclassifyTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative border border-amber-100 animate-in zoom-in duration-200">
             <button onClick={() => setShowReclassifyModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 p-2"><X size={20}/></button>
             <div className="flex items-center space-x-3 mb-6">
                 <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ArrowDownWideNarrow size={24}/></div>
-                <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Fim de Fila</h2><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Reclassificação Administrativa</p></div>
+                <div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Fim de Fila</h2></div>
             </div>
-            <p className="text-xs text-slate-600 mb-6 leading-relaxed">Mover <strong>{reclassifyTarget.name}</strong> para o final da lista geral?</p>
+            <p className="text-xs text-slate-600 mb-6 leading-relaxed">Mover <strong>{reclassifyTarget.name}</strong> para o final da lista?</p>
             <form onSubmit={handleReclassifySubmit} className="space-y-4">
               <input type="number" value={newRankingValue} onChange={e => setNewRankingValue(Number(e.target.value))} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-amber-500/10 transition-all" />
-              <div className="flex justify-end gap-3 mt-8">
-                <button type="button" onClick={() => setShowReclassifyModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="px-10 py-4 bg-amber-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Confirmar</button>
-              </div>
+              <button type="submit" className="w-full py-4 bg-amber-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Confirmar Reclassificação</button>
             </form>
           </div>
         </div>
@@ -391,10 +383,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                 <div className="p-4 bg-red-50 text-red-600 rounded-[2rem] mb-6 shadow-inner"><AlertCircle size={40}/></div>
                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-4">Confirmar Desistência</h2>
                 <p className="text-xs text-slate-500 mb-8 leading-relaxed px-4">Confirmar a desistência formal de <strong>{declineTarget.name}</strong>?</p>
-                <div className="flex flex-col w-full gap-2">
-                  <button onClick={handleDeclineConfirm} className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl hover:bg-red-700 transition-all active:scale-95">Sim, Registrar Desistência</button>
-                  <button onClick={() => setShowDeclineModal(false)} className="w-full py-4 bg-white text-slate-400 font-black text-[10px] uppercase rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all">Cancelar</button>
-                </div>
+                <button onClick={handleDeclineConfirm} className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl hover:bg-red-700 transition-all active:scale-95">Sim, Registrar Desistência</button>
             </div>
           </div>
         </div>
