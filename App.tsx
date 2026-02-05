@@ -13,7 +13,6 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// --- CONFIGURAÇÃO SUPABASE ---
 const SUPABASE_URL = "https://xsbpynwtlhntnafnmnbs.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ"; 
 
@@ -52,17 +51,15 @@ const App: React.FC = () => {
   ]);
   const [units, setUnits] = useState<GenericParameter[]>([
     { id: 'u1', name: 'Departamento de Computação', status: 'active' },
-    { id: 'u2', name: 'Departamento de Artes', status: 'active' },
-    { id: 'u3', name: 'Sede Administrativa', status: 'active' }
+    { id: 'u2', name: 'Departamento de Artes', status: 'active' }
   ]);
   const [profiles, setProfiles] = useState<GenericParameter[]>([
     { id: 'p1', name: 'Professor Visitante', status: 'active' },
-    { id: 'p2', name: 'Professor Substituto', status: 'active' },
-    { id: 'p3', name: 'Técnico Especializado', status: 'active' }
+    { id: 'p2', name: 'Professor Substituto', status: 'active' }
   ]);
 
   const [convocations, setConvocations] = useState<ConvokedPerson[]>(INITIAL_CONVOKED);
-  const [pssList, setPssList] = useState<PSS[]>(INITIAL_PSS);
+  const [pssList, setPssList] = useState<PSS[]>([]); // COMEÇA VAZIO PARA FORÇAR CARGA
   const [emailConfig, setEmailConfig] = useState<EmailConfig>(DEFAULT_EMAIL_CONFIG);
   const [logs, setLogs] = useState<AuditLog[]>([]);
 
@@ -82,22 +79,21 @@ const App: React.FC = () => {
     if (!isInitialLoadDone.current || isUpdatingFromRemote.current || !isDirty.current) return;
     
     setCloudStatus('syncing');
-    setCloudErrorMessage(null);
     const newTime = new Date().toISOString();
     
     try {
       const payload = { 
         id: 1, 
-        vacancies: JSON.parse(JSON.stringify(vacancies)),
-        parameters: JSON.parse(JSON.stringify(parameters)),
-        agencies: JSON.parse(JSON.stringify(agencies)),
-        units: JSON.parse(JSON.stringify(units)),
-        profiles: JSON.parse(JSON.stringify(profiles)),
-        convocations: JSON.parse(JSON.stringify(convocations)),
-        pss_list: JSON.parse(JSON.stringify(pssList)),
-        users: JSON.parse(JSON.stringify(users)), 
-        logs: JSON.parse(JSON.stringify(logs)),
-        email_config: JSON.parse(JSON.stringify(emailConfig)),
+        vacancies,
+        parameters,
+        agencies,
+        units,
+        profiles,
+        convocations,
+        pss_list: Array.isArray(pssList) ? pssList : [],
+        users, 
+        logs,
+        email_config: emailConfig,
         updated_at: newTime 
       };
 
@@ -110,76 +106,50 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("ERRO GRAVAÇÃO SUPABASE:", error);
-          let msg = `Erro ${error.code}: ${error.message}`;
-          
-          if (error.message.includes("relation") || error.message.includes("does not exist") || error.code === '42P01') {
-            msg = "ESTRUTURA AUSENTE: A tabela 'sistemp_data' não foi encontrada no banco. Siga o passo 'Reparo de Banco' em Configurações.";
-            setCloudStatus('setup_required');
-          } else if (error.code === '42501' || error.message.includes("policy")) {
-            msg = "PERMISSÃO NEGADA: O banco existe, mas as permissões (RLS) estão bloqueando o acesso. Execute o script de reparo.";
-            setCloudStatus('error');
-          } else {
-            setCloudStatus('error');
-          }
-          setCloudErrorMessage(msg);
+          setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
+          setCloudErrorMessage(error.message);
       }
     } catch (e: any) {
       setCloudStatus('error');
-      setCloudErrorMessage(e.message || "Falha crítica de rede com o servidor.");
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
   const loadFromCloud = useCallback(async () => {
     setCloudStatus('syncing');
-    setCloudErrorMessage(null);
-    
     try {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
       
-      if (error) {
-        setCloudErrorMessage(error.message);
-        setCloudStatus(error.message.includes("relation") ? 'setup_required' : 'error');
-        isInitialLoadDone.current = true;
-        return;
-      }
-
-      if (data && data.updated_at !== lastUpdateRef.current) {
+      if (!error && data) {
         isUpdatingFromRemote.current = true;
-        const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
-
-        setVacancies(safeArr(data.vacancies));
-        setParameters(safeArr(data.parameters));
-        setAgencies(safeArr(data.agencies));
-        setUnits(safeArr(data.units));
-        setProfiles(safeArr(data.profiles));
-        setConvocations(safeArr(data.convocations));
-        setPssList(safeArr(data.pss_list));
-        setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
-        setLogs(safeArr(data.logs));
-        setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
+        const safe = (val: any) => Array.isArray(val) ? val : [];
         
+        setVacancies(safe(data.vacancies));
+        setParameters(safe(data.parameters));
+        setAgencies(safe(data.agencies));
+        setUnits(safe(data.units));
+        setProfiles(safe(data.profiles));
+        setConvocations(safe(data.convocations));
+        setPssList(safe(data.pss_list)); // GARANTE ARRAY
+        setUsers(safe(data.users).length ? data.users : DEFAULT_USERS);
+        setLogs(safe(data.logs));
+        setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
         lastUpdateRef.current = data.updated_at;
       }
-      
       setCloudStatus('connected');
       isInitialLoadDone.current = true;
       setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
-    } catch (e: any) {
+    } catch (e) {
       setCloudStatus('error');
-      setCloudErrorMessage("Falha ao ler dados da nuvem.");
       isInitialLoadDone.current = true;
     }
   }, []);
 
-  useEffect(() => {
-    loadFromCloud();
-  }, [loadFromCloud]);
+  useEffect(() => { loadFromCloud(); }, [loadFromCloud]);
 
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1500);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1000);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
