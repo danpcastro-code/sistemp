@@ -13,7 +13,7 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// --- CONFIGURAÇÃO SUPABASE ATUALIZADA ---
+// --- CONFIGURAÇÃO SUPABASE ---
 const SUPABASE_URL = "https://xsbpynwtlhntnafnmnbs.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ"; 
 
@@ -110,18 +110,23 @@ const App: React.FC = () => {
           isDirty.current = false;
           setCloudStatus('connected');
       } else {
-          console.error("Erro Supabase:", error);
-          setCloudErrorMessage(`Erro ${error.code}: ${error.message}`);
+          console.error("ERRO GRAVAÇÃO SUPABASE:", error);
+          let msg = `Erro ${error.code}: ${error.message}`;
           
-          if (error.message.includes("relation") || error.message.includes("does not exist")) {
+          if (error.message.includes("relation") || error.message.includes("does not exist") || error.code === '42P01') {
+            msg = "ESTRUTURA AUSENTE: A tabela 'sistemp_data' não foi encontrada no banco. Siga o passo 'Reparo de Banco' em Configurações.";
             setCloudStatus('setup_required');
+          } else if (error.code === '42501' || error.message.includes("policy")) {
+            msg = "PERMISSÃO NEGADA: O banco existe, mas as permissões (RLS) estão bloqueando o acesso. Execute o script de reparo.";
+            setCloudStatus('error');
           } else {
             setCloudStatus('error');
           }
+          setCloudErrorMessage(msg);
       }
     } catch (e: any) {
       setCloudStatus('error');
-      setCloudErrorMessage(e.message || "Falha na conexão com o Supabase.");
+      setCloudErrorMessage(e.message || "Falha crítica de rede com o servidor.");
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
@@ -162,7 +167,7 @@ const App: React.FC = () => {
       setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
     } catch (e: any) {
       setCloudStatus('error');
-      setCloudErrorMessage("Falha crítica ao carregar dados remotos.");
+      setCloudErrorMessage("Falha ao ler dados da nuvem.");
       isInitialLoadDone.current = true;
     }
   }, []);
@@ -174,7 +179,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2500);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 1500);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
@@ -192,7 +197,8 @@ const App: React.FC = () => {
       cloudStatus={cloudStatus}
       onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
-      {activeTab === 'dashboard' && <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />}
+      {/* Fix: removed unused emailConfig prop from DashboardView to match its interface */}
+      {activeTab === 'dashboard' && <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} />}
       {activeTab === 'vacancies' && <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies.filter(a => a.status === 'active').map(a => a.name)} units={units.filter(u => u.status === 'active').map(u => u.name)} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} setAgencies={() => {}} setUnits={() => {}} convocations={convocations} setConvocations={setConvocations} pssList={pssList} userRole={currentUser.role} onLog={addLog} />}
       {activeTab === 'convocations' && <ConvocationManagement convocations={convocations} setConvocations={setConvocations} pssList={pssList} setPssList={setPssList} vacancies={vacancies} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} userRole={currentUser.role} onLog={addLog} />}
       {activeTab === 'reports' && <ReportsView vacancies={vacancies} convocations={convocations} />}
