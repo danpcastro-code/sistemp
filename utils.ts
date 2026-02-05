@@ -1,5 +1,13 @@
 
-import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOfDay } from 'date-fns';
+import { 
+  differenceInDays, 
+  parseISO, 
+  addDays, 
+  format, 
+  addYears, 
+  subDays, 
+  startOfDay 
+} from 'date-fns';
 import { Vacancy, Occupation, ContractStatus } from './types';
 
 /**
