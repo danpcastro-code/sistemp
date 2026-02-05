@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ConvokedPerson, CompetitionType, ConvocationStatus, PSS, Vacancy, ContractStatus, UserRole } from '../types';
 import { generateId, maskCPF, formatDisplayDate } from '../utils';
 import { 
-  Search, X, Table, UserPlus, FileSpreadsheet, FileText, UserCheck, RefreshCw, ArrowRight, Clock, Hash, Check, FileUp, AlertCircle
+  Search, X, Table, UserPlus, FileSpreadsheet, FileText, UserCheck, RefreshCw, ArrowRight, Clock, Hash, Check, FileUp, AlertCircle, UserX, ArrowDownWideNarrow
 } from 'lucide-react';
 
 interface ConvocationManagementProps {
@@ -45,45 +45,40 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     );
   }, [convocations, selectedPssId]);
 
-  // LÓGICA DE SUBSTITUIÇÃO EVOLUÍDA
+  // LÓGICA DE SUBSTITUIÇÃO REFINADA
   const substitutionData = useMemo(() => {
     if (!selectedPssId || !currentPss) return { totalVacant: 0, pairings: [] };
     
     const pssVacancies = vacancies.filter(v => v.pssId === selectedPssId);
     const vacantSlots: { vacancyCode: string, slotIndex: number, competition: CompetitionType }[] = [];
     
-    // 1. Identificar postos que não possuem ocupação ATIVA (Livres)
+    // 1. Identificar postos Livres (Sem contrato Ativo)
     pssVacancies.forEach(v => {
       for (let i = 1; i <= v.initialQuantity; i++) {
         const active = v.occupations.find(o => o.slotIndex === i && o.status === ContractStatus.ACTIVE);
         if (!active) {
           const history = v.occupations.filter(o => o.slotIndex === i).sort((a, b) => b.order - a.order);
-          // Se houve ocupação, pega a cota do último, se não, assume Ampla Concorrência como base
           const lastComp = (history.length > 0 ? history[0].competition : CompetitionType.AC) || CompetitionType.AC;
           vacantSlots.push({ vacancyCode: v.code, slotIndex: i, competition: lastComp });
         }
       }
     });
 
-    // 2. Filtrar candidatos que PODEM ser chamados (Não contratados nem desistentes)
+    // 2. Pool de Candidatos Aptos (Exclui quem já está trabalhando ou desistiu)
     const candidatePool = currentPss.candidates.filter(c => {
         const globalInfo = convocations.find(nc => nc.cpf === c.cpf && nc.pssId === selectedPssId);
-        if (!globalInfo) return true; // Habilitado e nunca chamado
-        // Pode ser sugerido se estiver Pendente (já foi chamado mas não contratado) 
-        // ou se não tiver registro de desistência/contratação
+        if (!globalInfo) return true;
+        // Permite sugerir quem já foi nomeado (Pendente) para que o RH veja que o processo está em curso
         return globalInfo.status !== ConvocationStatus.HIRED && globalInfo.status !== ConvocationStatus.DECLINED;
     }).sort((a, b) => a.ranking - b.ranking);
 
-    // 3. Cruzar postos vagos com candidatos do pool respeitando cota e ranking
+    // 3. Mapeamento 1 para 1 (Posto Vago -> Candidato)
     const pairings: { slot: any, candidate: ConvokedPerson, isAlreadyNamed: boolean }[] = [];
     const poolCopy = [...candidatePool];
     
     vacantSlots.forEach(slot => {
         if (poolCopy.length > 0) {
-            // Tenta achar o melhor candidato para aquela cota específica
             let cIdx = poolCopy.findIndex(c => c.competition === slot.competition);
-            
-            // Se não houver candidato disponível naquela cota, pega o próximo do ranking geral (AC)
             if (cIdx === -1) cIdx = 0; 
             
             const candidate = poolCopy[cIdx];
@@ -95,7 +90,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                 isAlreadyNamed: globalInfo?.status === ConvocationStatus.PENDING 
             });
 
-            // Remove do pool para não sugerir o mesmo nome para dois postos diferentes
             poolCopy.splice(cIdx, 1);
         }
     });
@@ -123,6 +117,33 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
     setNamingAct('');
     setShowNamingModal(false);
     onLog('NOMEACAO', `${newConvocations.length} nomeados no PSS ${currentPss.title}`);
+  };
+
+  const handleDecline = (convocationId: string) => {
+    if (!confirm("Confirmar desistência definitiva deste candidato?")) return;
+    setConvocations(prev => prev.map(c => c.id === convocationId ? { ...c, status: ConvocationStatus.DECLINED } : c));
+    onLog('DESISTENCIA', `Candidato marcou desistência.`);
+  };
+
+  const handleReclassify = (convocation: ConvokedPerson) => {
+    if (!confirm("O candidato irá para o final da lista (Fim de Fila). Confirmar?")) return;
+    
+    // 1. Remove da lista de nomeações ativas
+    setConvocations(prev => prev.filter(c => c.id !== convocation.id));
+    
+    // 2. Atualiza ranking no PSS para ser o último
+    setPssList(prev => prev.map(p => {
+        if (p.id === convocation.pssId) {
+            const maxRanking = Math.max(...p.candidates.map(c => c.ranking), 0);
+            return {
+                ...p,
+                candidates: p.candidates.map(c => c.cpf === convocation.cpf ? { ...c, ranking: maxRanking + 1, status: ConvocationStatus.RECLASSIFIED } : c)
+            };
+        }
+        return p;
+    }));
+    
+    onLog('FIM_DE_FILA', `${convocation.name} movido para o final da lista.`);
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,9 +206,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                               <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Vigência: {formatDisplayDate(p.validUntil)}</p>
                           </div>
                       ))}
-                      {filteredPssList.length === 0 && (
-                          <div className="py-10 text-center text-slate-300 font-black uppercase text-[8px]">Nenhum edital</div>
-                      )}
                   </div>
               </div>
           </div>
@@ -200,7 +218,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                       <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
                           <div>
                             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Candidatos Classificados</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Gerencie a lista de espera e novos chamamentos</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Lista de espera e candidatos aptos</p>
                           </div>
                           <div className="flex items-center space-x-2">
                             {selectedCandidates.length > 0 && (
@@ -209,7 +227,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                 </button>
                             )}
                             <input type="file" ref={fileInputRef} onChange={handleCsvUpload} className="hidden" accept=".csv" />
-                            <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Importar Candidatos">
+                            <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                                 <FileUp size={18}/>
                             </button>
                           </div>
@@ -242,9 +260,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                         </tr>
                                     );
                                 })}
-                                {currentPss?.candidates.length === 0 && (
-                                    <tr><td colSpan={5} className="py-20 text-center text-slate-300 font-black uppercase text-[10px]">Importe candidatos via CSV para começar.</td></tr>
-                                )}
                             </tbody>
                         </table>
                       </div>
@@ -255,7 +270,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                     <>
                       <div className="p-8 border-b border-slate-100 bg-slate-50/30">
                           <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Candidatos Nomeados</h2>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Acompanhamento de portarias e admissões</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Controle de portarias em aberto</p>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -263,22 +278,32 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                 <tr>
                                     <th className="px-8 py-4">Ato / Portaria</th>
                                     <th className="px-8 py-4">Candidato</th>
-                                    <th className="px-8 py-4">Data Nomeação</th>
-                                    <th className="px-8 py-4 text-right">Status</th>
+                                    <th className="px-8 py-4">Data</th>
+                                    <th className="px-8 py-4">Status</th>
+                                    <th className="px-8 py-4 text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {nominatedCandidates.map(c => (
-                                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                                    <tr key={c.id} className="hover:bg-slate-50">
                                         <td className="px-8 py-4 font-black text-slate-800 text-xs"><FileText size={14} className="inline mr-2 text-blue-500" />{c.convocationAct}</td>
                                         <td className="px-8 py-4"><p className="text-xs font-bold text-slate-800">{c.name}</p><p className="text-[9px] text-slate-400">{maskCPF(c.cpf)}</p></td>
                                         <td className="px-8 py-4 text-xs font-bold text-slate-500">{formatDisplayDate(c.convocationDate || '')}</td>
-                                        <td className="px-8 py-4 text-right"><span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border ${c.status === ConvocationStatus.HIRED ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{c.status}</span></td>
+                                        <td className="px-8 py-4"><span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border ${c.status === ConvocationStatus.HIRED ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{c.status}</span></td>
+                                        <td className="px-8 py-4 text-right">
+                                            {c.status === ConvocationStatus.PENDING && (
+                                              <div className="flex justify-end space-x-2">
+                                                  <button onClick={() => handleReclassify(c)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm" title="Fim de Fila">
+                                                      <ArrowDownWideNarrow size={14}/>
+                                                  </button>
+                                                  <button onClick={() => handleDecline(c.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm" title="Desistente">
+                                                      <UserX size={14}/>
+                                                  </button>
+                                              </div>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
-                                {nominatedCandidates.length === 0 && (
-                                    <tr><td colSpan={4} className="py-20 text-center text-slate-300 font-black uppercase text-[10px]">Nenhum candidato nomeado para este edital.</td></tr>
-                                )}
                             </tbody>
                         </table>
                       </div>
@@ -291,7 +316,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                             <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
                                 <div>
                                     <h3 className="text-3xl font-black uppercase tracking-tighter">Monitor de Reposição</h3>
-                                    <p className="text-slate-400 font-medium text-sm mt-2">Cruzamento integral de postos livres com o cadastro reserva.</p>
+                                    <p className="text-slate-400 font-medium text-sm mt-2">Cruzamento automático de postos vagos com o cadastro reserva.</p>
                                 </div>
                                 <div className="bg-white/10 p-4 rounded-3xl border border-white/10 text-center min-w-[120px]">
                                     <p className="text-[9px] font-black uppercase opacity-60 mb-1">Postos Livres</p>
@@ -311,13 +336,13 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pair.slot.vacancyCode}</p>
-                                            <h4 className="text-xl font-black text-slate-800 tracking-tighter">NECESSITA REPOSIÇÃO</h4>
-                                            <p className="text-[9px] font-bold text-slate-500 uppercase flex items-center mt-1">Cota Requerida: <span className="text-blue-600 ml-1">{pair.slot.competition}</span></p>
+                                            <h4 className="text-xl font-black text-slate-800 tracking-tighter">AGUARDA REPOSIÇÃO</h4>
+                                            <p className="text-[9px] font-bold text-slate-500 uppercase">Cota Original: <span className="text-blue-600">{pair.slot.competition}</span></p>
                                         </div>
                                     </div>
 
                                     <div className="hidden md:flex flex-col items-center text-slate-200">
-                                        <span className={`text-[8px] font-black uppercase mb-1 ${pair.isAlreadyNamed ? 'text-indigo-400' : 'text-amber-400'}`}>{pair.isAlreadyNamed ? 'Nomeado' : 'Sugerido'}</span>
+                                        <span className={`text-[8px] font-black uppercase mb-1 ${pair.isAlreadyNamed ? 'text-indigo-400' : 'text-amber-400'}`}>{pair.isAlreadyNamed ? 'Nomeação em Curso' : 'Sugerido'}</span>
                                         <ArrowRight size={24}/>
                                     </div>
 
@@ -338,15 +363,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
                                 <div className="py-24 text-center border-4 border-dashed border-red-50 rounded-[3.5rem] bg-red-50/20">
                                     <AlertCircle size={48} className="mx-auto text-red-200 mb-6"/>
                                     <h4 className="text-xl font-black text-red-800 uppercase tracking-widest">Cadastro Reserva Esgotado</h4>
-                                    <p className="text-[10px] text-red-400 font-bold uppercase mt-2">Não há candidatos disponíveis no PSS para preencher os {substitutionData.totalVacant} postos vagos.</p>
-                                </div>
-                            )}
-
-                            {substitutionData.totalVacant === 0 && (
-                                <div className="py-24 text-center border-4 border-dashed border-slate-100 rounded-[3.5rem]">
-                                    <Check size={48} className="mx-auto text-green-200 mb-6"/>
-                                    <h4 className="text-xl font-black text-slate-300 uppercase tracking-widest">Postos Providos</h4>
-                                    <p className="text-[10px] text-slate-300 font-bold uppercase mt-2">Não há necessidade de substituição. Todos os postos vigentes estão ocupados ou com nomeação em curso.</p>
+                                    <p className="text-[10px] text-red-400 font-bold uppercase mt-2">Não há candidatos aptos para os {substitutionData.totalVacant} postos vagos.</p>
                                 </div>
                             )}
                         </div>
@@ -375,36 +392,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ convocati
               <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowNamingModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
                 <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Confirmar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL NOVO PSS */}
-      {showPssModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl animate-in zoom-in duration-300">
-            <h2 className="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Novo Edital</h2>
-            <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const newPss: PSS = {
-                    id: generateId(),
-                    title: formData.get('title') as string,
-                    validUntil: formData.get('validUntil') as string,
-                    isArchived: false,
-                    candidates: []
-                };
-                setPssList(prev => [...prev, newPss]);
-                setShowPssModal(false);
-                onLog('PSS', `Novo edital criado: ${newPss.title}`);
-            }} className="space-y-4">
-              <input name="title" required placeholder="Título (ex: PSS 01/2024)" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-              <input type="date" name="validUntil" required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowPssModal(false)} className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="px-10 py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl">Salvar</button>
               </div>
             </form>
           </div>
