@@ -12,7 +12,6 @@ interface AuditViewProps {
 const AuditView: React.FC<AuditViewProps> = ({ logs = [], onClear }) => {
   const [search, setSearch] = React.useState('');
   
-  // Fix: Added useMemo to the React imports and used it correctly here.
   const filteredLogs = useMemo(() => {
     return logs.filter(l => {
       const action = l?.action?.toLowerCase() || "";
