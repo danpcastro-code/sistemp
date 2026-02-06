@@ -125,7 +125,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.2 (Sincronizado)
+  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.3 (Fevereiro 2024)
+-- 1. Criação da Tabela com suporte a JSONB para todos os módulos
 CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
@@ -141,18 +142,24 @@ CREATE TABLE IF NOT EXISTS public.sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- Garante que colunas novas existam caso a tabela já tenha sido criada anteriormente
+-- 2. Garantia de colunas (caso a tabela já exista em versão anterior)
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
 
+-- 3. Configuração de Acesso (Segurança)
 ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE public.sistemp_data TO anon;
 GRANT ALL ON TABLE public.sistemp_data TO authenticated;
 GRANT ALL ON TABLE public.sistemp_data TO service_role;
-GRANT ALL ON TABLE public.sistemp_data TO postgres;
 
-INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
+-- 4. Inicialização do Registro Mestre (ID 1)
+INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+COMMENT ON TABLE public.sistemp_data IS 'Armazenamento centralizado de estado do CTU Gestão';
+COMMENT ON COLUMN public.sistemp_data.pss_list IS 'Lista de Editais PSS e candidatos vinculados';`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(REPAIR_SQL);
