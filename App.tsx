@@ -16,18 +16,11 @@ import { generateId } from './utils';
 // ============================================================================
 // ⚠️ ÁREA DE CONFIGURAÇÃO DO BANCO DE DADOS (SUPABASE)
 // ============================================================================
-// 1. No Supabase, vá em Settings > API
-// 2. Copie o "Project URL" e cole abaixo no lugar da URL atual
-// 3. Copie a "anon public" Key e cole abaixo no lugar da chave atual
-// ============================================================================
-
 const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
-
 // ============================================================================
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const SESSION_KEY = 'ctu_gestao_session_v1';
 
 const DEFAULT_USERS: User[] = [
@@ -57,13 +50,8 @@ const App: React.FC = () => {
       const saved = localStorage.getItem(SESSION_KEY);
       if (!saved) return null;
       const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === 'object' && parsed.id && parsed.username) {
-        return parsed as User;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+      return (parsed && parsed.id) ? parsed : null;
+    } catch { return null; }
   });
 
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
@@ -89,6 +77,28 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
+  const handleMasterReset = () => {
+    // Retorna o sistema ao estado "virgem"
+    setVacancies([]);
+    setConvocations([]);
+    setPssList([]);
+    setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
+    setUnits([{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
+    setProfiles([{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
+    setUsers(DEFAULT_USERS);
+    setLogs([]);
+    setEmailConfig(DEFAULT_EMAIL_CONFIG);
+    // Mantemos INITIAL_PARAMETERS pois são as definições de lei básicas do sistema
+    setParameters(INITIAL_PARAMETERS);
+    
+    isDirty.current = true;
+    addLog('SISTEMA', 'RESTAURAÇÃO COMPLETA: Toda a base de dados manual foi apagada.');
+    
+    // Força gravação imediata
+    setTimeout(() => saveToCloud(), 500);
+    alert("Sistema restaurado com sucesso. Todos os dados foram apagados.");
+  };
+
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
@@ -107,27 +117,21 @@ const App: React.FC = () => {
     setCloudStatus('syncing');
     try {
       const payload = { 
-        id: 1, 
-        vacancies, parameters, agencies, units, profiles, convocations, pss_list: pssList, users, logs,
-        email_config: emailConfig,
-        updated_at: new Date().toISOString()
+        id: 1, vacancies, parameters, agencies, units, profiles, convocations, pss_list: pssList, users, logs,
+        email_config: emailConfig, updated_at: new Date().toISOString()
       };
-
       const { error } = await supabase.from('sistemp_data').upsert(payload);
-      
       if (!error) {
           isDirty.current = false;
           setCloudStatus('connected');
           setCloudErrorMessage(null);
       } else {
-          console.error("Supabase Error:", error);
           setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
           setCloudErrorMessage(`${error.code}: ${error.message}`);
       }
     } catch (e: any) {
-      console.error("Cloud Save Exception:", e);
       setCloudStatus('error');
-      setCloudErrorMessage(e.message || "Erro desconhecido na comunicação com a nuvem.");
+      setCloudErrorMessage(e.message);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
@@ -179,19 +183,14 @@ const App: React.FC = () => {
 
   return (
     <Layout 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
-      userRole={currentUser.role} 
-      userName={currentUser.name} 
-      onLogout={handleLogout}
-      cloudStatus={cloudStatus}
-      onSync={() => { isDirty.current = true; saveToCloud(); }}
+      activeTab={activeTab} setActiveTab={setActiveTab} userRole={currentUser.role} userName={currentUser.name} 
+      onLogout={handleLogout} cloudStatus={cloudStatus} onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
       {activeTab === 'dashboard' && <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />}
       {activeTab === 'vacancies' && <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies.filter(a => a.status === 'active').map(a => a.name)} units={units.filter(u => u.status === 'active').map(u => u.name)} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} setAgencies={() => {}} setUnits={() => {}} convocations={convocations} setConvocations={setConvocations} pssList={pssList} userRole={currentUser.role} onLog={addLog} />}
       {activeTab === 'convocations' && <ConvocationManagement convocations={convocations} setConvocations={setConvocations} pssList={pssList} setPssList={setPssList} vacancies={vacancies} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} userRole={currentUser.role} onLog={addLog} />}
       {activeTab === 'reports' && <ReportsView vacancies={vacancies} convocations={convocations} />}
-      {activeTab === 'settings' && <SettingsView parameters={parameters} setParameters={setParameters} agencies={agencies} setAgencies={setAgencies} units={units} setUnits={setUnits} profiles={profiles} setProfiles={setProfiles} users={users} setUsers={setUsers} vacancies={vacancies} convocations={convocations} pssList={pssList} onRestoreAll={() => {}} cloudStatus={cloudStatus} cloudErrorMessage={cloudErrorMessage} onLog={addLog} emailConfig={emailConfig} setEmailConfig={setEmailConfig} />}
+      {activeTab === 'settings' && <SettingsView parameters={parameters} setParameters={setParameters} agencies={agencies} setAgencies={setAgencies} units={units} setUnits={setUnits} profiles={profiles} setProfiles={setProfiles} users={users} setUsers={setUsers} vacancies={vacancies} convocations={convocations} pssList={pssList} onRestoreAll={handleMasterReset} cloudStatus={cloudStatus} cloudErrorMessage={cloudErrorMessage} onLog={addLog} emailConfig={emailConfig} setEmailConfig={setEmailConfig} />}
       {activeTab === 'audit' && <AuditView logs={logs} onClear={() => setLogs([])} />}
     </Layout>
   );
