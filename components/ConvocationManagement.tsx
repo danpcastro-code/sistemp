@@ -32,10 +32,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   const [showNominationModal, setShowNominationModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados para Seleção Múltipla
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
-  // Estados para Modal
   const [newPssTitle, setNewPssTitle] = useState('');
   const [newPssDate, setNewPssDate] = useState('');
   const [nominationAct, setNominationAct] = useState('');
@@ -56,8 +54,9 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     }
 
     if (searchTerm) {
+      const lowSearch = searchTerm.toLowerCase();
       list = list.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        c.name.toLowerCase().includes(lowSearch) || 
         c.cpf.includes(searchTerm)
       );
     }
@@ -109,31 +108,57 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result as string;
+      const buffer = event.target?.result as ArrayBuffer;
+      
+      // Tenta decodificar primeiro em UTF-8
+      let decoder = new TextDecoder('utf-8');
+      let text = decoder.decode(buffer);
+      
+      // Se contiver caracteres de substituição (indicando erro de codificação), tenta ISO-8859-1
+      if (text.includes('')) {
+        decoder = new TextDecoder('iso-8859-1');
+        text = decoder.decode(buffer);
+      }
+
       const lines = text.split('\n');
       const newCandidates: ConvokedPerson[] = [];
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const cols = line.split(';').map(c => c.trim().replace(/^"|"$/g, ''));
+        
+        // Suporta ponto e vírgula ou vírgula como separador
+        const separator = line.includes(';') ? ';' : ',';
+        const cols = line.split(separator).map(c => c.trim().replace(/^"|"$/g, ''));
+        
         if (cols.length < 6) continue;
 
         const [nome, cpf, email, perfil, modalidade, ranking] = cols;
         let comp = CompetitionType.AC;
-        if (modalidade.toUpperCase().includes('PCD')) comp = CompetitionType.PCD;
-        if (modalidade.toUpperCase().includes('PPP')) comp = CompetitionType.PPP;
+        const modUpper = modalidade.toUpperCase();
+        if (modUpper.includes('PCD')) comp = CompetitionType.PCD;
+        if (modUpper.includes('PPP') || modUpper.includes('COTA')) comp = CompetitionType.PPP;
 
         newCandidates.push({
-          id: generateId(), name: nome, cpf, email, profile: perfil, notice: currentPss?.title || '',
-          pssId: selectedPssId, competition: comp, ranking: parseInt(ranking) || 99,
-          status: ConvocationStatus.PENDING, createdAt: new Date().toISOString()
+          id: generateId(), 
+          name: nome, 
+          cpf, 
+          email, 
+          profile: perfil, 
+          notice: currentPss?.title || '',
+          pssId: selectedPssId, 
+          competition: comp, 
+          ranking: parseInt(ranking) || 99,
+          status: ConvocationStatus.PENDING, 
+          createdAt: new Date().toISOString()
         });
       }
+      
       setConvocations(prev => [...prev, ...newCandidates]);
       onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos para o edital ${currentPss?.title}.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -191,7 +216,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                       >
                         <Megaphone size={14} className="mr-2" /> Realizar Chamamento ({selectedIds.length})
                       </button>
-                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv, .txt" className="hidden" />
                     </>
                   )}
                 </div>
@@ -245,7 +270,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         </section>
       </div>
 
-      {/* MODAL: NOMEAÇÃO / CHAMAMENTO */}
       {showNominationModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
@@ -267,7 +291,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL: NOVO PSS */}
       {showAddPssModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
