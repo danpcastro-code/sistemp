@@ -34,10 +34,10 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
-  const [newPssTitle, setNewPssTitle] = useState('');
-  const [newPssDate, setNewPssDate] = useState('');
   const [nominationAct, setNominationAct] = useState('');
   const [nominationDate, setNominationDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [newPssTitle, setNewPssTitle] = useState('');
+  const [newPssDate, setNewPssDate] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canEdit = userRole === UserRole.ADMIN || userRole === UserRole.HR;
@@ -52,6 +52,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     } else if (activeSubTab === 'convoked') {
       list = list.filter(c => c.status === ConvocationStatus.PENDING && c.convocationAct);
     } else if (activeSubTab === 'substitution') {
+      // Candidatos pendentes aptos para substituição
       list = list.filter(c => c.status === ConvocationStatus.PENDING);
     }
 
@@ -82,14 +83,17 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     e.preventDefault();
     if (selectedIds.length === 0) return;
 
+    // Sanitiza o ato de convocação retirando acentos
+    const sanitizedAct = removeAccents(nominationAct).toUpperCase();
+
     setConvocations(prev => prev.map(c => 
       selectedIds.includes(c.id) 
-        ? { ...c, convocationAct: removeAccents(nominationAct).toUpperCase(), convocationDate: nominationDate } 
+        ? { ...c, convocationAct: sanitizedAct, convocationDate: nominationDate } 
         : c
     ));
 
     const logType = activeSubTab === 'substitution' ? 'SUBSTITUIÇÃO' : 'CONVOCAÇÃO';
-    onLog(logType, `Chamamento realizado para ${selectedIds.length} candidatos do edital ${currentPss?.title}.`);
+    onLog(logType, `Chamamento realizado (${sanitizedAct}) para ${selectedIds.length} candidatos do edital ${currentPss?.title}.`);
     
     setShowNominationModal(false);
     setSelectedIds([]);
@@ -104,6 +108,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     setPssList(prev => [...prev, newPss]);
     setSelectedPssId(newPss.id);
     setShowAddPssModal(false);
+    setNewPssTitle('');
     onLog('CRIAR_PSS', `Novo Edital "${cleanTitle}" cadastrado.`);
   };
 
@@ -117,6 +122,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       let decoder = new TextDecoder('utf-8');
       let text = decoder.decode(buffer);
       
+      // Detecção de encoding para evitar caracteres estranhos
       if (text.includes('\ufffd')) {
         decoder = new TextDecoder('iso-8859-1');
         text = decoder.decode(buffer);
@@ -143,8 +149,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         newCandidates.push({
           id: generateId(), 
           name: removeAccents(nome).toUpperCase(), 
-          cpf: maskCPF(cpf), // MEMORIZAÇÃO MASCARADA AQUI
-          email, 
+          cpf: maskCPF(cpf), // MEMORIZAÇÃO MASCARADA OBRIGATÓRIA
+          email: email.toLowerCase(), 
           profile: removeAccents(perfil).toUpperCase(), 
           notice: currentPss?.title || '',
           pssId: selectedPssId, 
@@ -156,7 +162,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       }
       
       setConvocations(prev => [...prev, ...newCandidates]);
-      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos com CPFs anonimizados para o edital ${currentPss?.title}.`);
+      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos com dados sanitizados.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsArrayBuffer(file);
@@ -166,9 +172,22 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-sm">
         <div className="flex space-x-2 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200">
-          <button onClick={() => { setActiveSubTab('classified'); setSelectedIds([]); }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Classificados</button>
-          <button onClick={() => { setActiveSubTab('convoked'); setSelectedIds([]); }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Nomeações / Chamamento</button>
-          <button onClick={() => { setActiveSubTab('substitution'); setSelectedIds([]); }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'substitution' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>
+          <button 
+            onClick={() => { setActiveSubTab('classified'); setSelectedIds([]); }} 
+            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+          >
+            Classificados
+          </button>
+          <button 
+            onClick={() => { setActiveSubTab('convoked'); setSelectedIds([]); }} 
+            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+          >
+            Chamamento Efetuado
+          </button>
+          <button 
+            onClick={() => { setActiveSubTab('substitution'); setSelectedIds([]); }} 
+            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'substitution' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+          >
             <span className="flex items-center"><Repeat size={12} className="mr-1.5"/> Substituição</span>
           </button>
         </div>
@@ -203,7 +222,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <div>
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><FileSpreadsheet className="mr-3 text-blue-600" size={20} /> {currentPss?.title}</h3>
                   <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-widest">
-                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos em processo de nomeação' : 'Gestão de convocações para substituição'}
+                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos com ato de convocação publicado' : 'Fluxo de convocação para substituição'}
                   </p>
                 </div>
 
@@ -219,7 +238,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                         className={`flex items-center px-6 py-2.5 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg disabled:opacity-30 disabled:grayscale ${activeSubTab === 'substitution' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                       >
                         {activeSubTab === 'substitution' ? <Repeat size={14} className="mr-2"/> : <Megaphone size={14} className="mr-2" />}
-                        {activeSubTab === 'substitution' ? 'Realizar Substituição' : 'Realizar Chamamento'} ({selectedIds.length})
+                        {activeSubTab === 'substitution' ? 'Substituir Agora' : 'Realizar Chamamento'} ({selectedIds.length})
                       </button>
                       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv, .txt" className="hidden" />
                     </>
@@ -241,7 +260,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                       <th className="px-6 py-4">Candidato / CPF</th>
                       <th className="px-6 py-4">Perfil</th>
                       <th className="px-6 py-4">Modalidade</th>
-                      {(activeSubTab === 'convoked' || activeSubTab === 'substitution') && <th className="px-6 py-4">Ato de Convocação</th>}
+                      {(activeSubTab === 'convoked' || activeSubTab === 'substitution') && <th className="px-6 py-4">Ato / Portaria</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -263,14 +282,14 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                                 <p className="text-[9px] text-slate-400 font-bold uppercase">{formatDisplayDate(c.convocationDate || '')}</p>
                               </>
                             ) : (
-                              <span className="text-slate-300 italic">Pendente</span>
+                              <span className="text-slate-300 italic">Aguardando Ato</span>
                             )}
                           </td>
                         )}
                       </tr>
                     ))}
                     {candidates.length === 0 && (
-                      <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-widest opacity-30">Nenhum candidato nesta lista</td></tr>
+                      <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-widest opacity-30">Nenhum candidato filtrado</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -280,7 +299,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
             <div className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-32 flex flex-col items-center justify-center text-center h-full">
               <FileSpreadsheet size={64} className="text-slate-200 mb-6"/>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Gestão de Classificados</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest max-w-xs">Selecione um edital na lista lateral para iniciar o chamamento.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest max-w-xs">Selecione um edital para iniciar o chamamento ou substituição.</p>
             </div>
           )}
         </section>
@@ -291,12 +310,12 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
             <button onClick={() => setShowNominationModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">
-              {activeSubTab === 'substitution' ? 'Convocar p/ Substituição' : 'Realizar Chamamento'}
+              {activeSubTab === 'substitution' ? 'Substituição' : 'Chamamento'}
             </h2>
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Convocando {selectedIds.length} candidatos para o edital {currentPss?.title}</p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Processando {selectedIds.length} candidatos do edital {currentPss?.title}</p>
             <form onSubmit={handleNomination} className="space-y-4">
               <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato / Portaria de Convocação</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato / Portaria (Será salvo sem acentos)</label>
                 <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
               </div>
               <div>
@@ -304,7 +323,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" />
               </div>
               <button type="submit" className={`w-full py-4 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 transition-all ${activeSubTab === 'substitution' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                {activeSubTab === 'substitution' ? 'Confirmar Substituição' : 'Confirmar Chamamento em Massa'}
+                Confirmar {activeSubTab === 'substitution' ? 'Substituição' : 'Chamamento'}
               </button>
             </form>
           </div>
