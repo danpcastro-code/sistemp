@@ -1,348 +1,297 @@
 
-import React, { useState, useMemo, useRef } from 'react';
-import { ConvokedPerson, CompetitionType, ConvocationStatus, PSS, Vacancy, ContractStatus, UserRole } from '../types';
-import { maskCPF, formatDisplayDate, generateId, removeAccents } from '../utils';
+import React, { useState, useMemo } from 'react';
+import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig, PSS, GenericParameter } from '../types';
 import { 
-  X, Plus, FileSpreadsheet, Clock, Search, Trash2, CheckCircle2, AlertCircle, Download, Upload, UserPlus, Filter, Trash, UserCheck, Mail, Megaphone, Calendar, Repeat
+  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, Gavel, Database, Copy, Check, Terminal, KeyRound, AlertCircle, DatabaseZap, ExternalLink, Settings as SettingsIcon, Code2, Bomb, RefreshCw
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { generateId, normalizeString, removeAccents } from '../utils';
 
-interface ConvocationManagementProps {
-  convocations: ConvokedPerson[];
-  setConvocations: React.Dispatch<React.SetStateAction<ConvokedPerson[]>>;
-  pssList: PSS[];
-  setPssList: React.Dispatch<React.SetStateAction<PSS[]>>;
+interface SettingsViewProps {
+  parameters: LegalParameter[];
+  setParameters: React.Dispatch<React.SetStateAction<LegalParameter[]>>;
+  agencies: GenericParameter[];
+  setAgencies: React.Dispatch<React.SetStateAction<GenericParameter[]>>;
+  units: GenericParameter[];
+  setUnits: React.Dispatch<React.SetStateAction<GenericParameter[]>>;
+  profiles: GenericParameter[];
+  setProfiles: React.Dispatch<React.SetStateAction<GenericParameter[]>>;
+  users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   vacancies: Vacancy[];
-  profiles: string[];
-  userRole: UserRole;
+  convocations: ConvokedPerson[];
+  pssList: PSS[];
+  onRestoreAll: () => void;
+  cloudStatus?: 'idle' | 'syncing' | 'error' | 'connected' | 'setup_required';
+  cloudErrorMessage?: string | null;
   onLog: (action: string, details: string) => void;
+  emailConfig: EmailConfig;
+  setEmailConfig: (e: EmailConfig) => void;
 }
 
-const ConvocationManagement: React.FC<ConvocationManagementProps> = ({ 
-  convocations = [], 
-  setConvocations,
-  pssList = [], 
-  setPssList, 
-  userRole, 
-  onLog 
-}) => {
-  const [activeSubTab, setActiveSubTab] = useState<'classified' | 'convoked' | 'substitution'>('classified');
-  const [selectedPssId, setSelectedPssId] = useState<string | null>(null);
-  const [showAddPssModal, setShowAddPssModal] = useState(false);
-  const [showNominationModal, setShowNominationModal] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+interface ListManagerProps {
+  title: string;
+  subtitle: string;
+  items: GenericParameter[];
+  onAdd: (name: string) => void;
+  onAction: (item: GenericParameter) => void;
+  onToggleStatus: (item: GenericParameter) => void;
+  icon: React.ReactNode;
+}
+
+const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items, onAdd, onAction, onToggleStatus, icon }) => {
+  const [inputValue, setInputValue] = useState('');
   
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
-  const [nominationAct, setNominationAct] = useState('');
-  const [nominationDate, setNominationDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [newPssTitle, setNewPssTitle] = useState('');
-  const [newPssDate, setNewPssDate] = useState('');
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const canEdit = userRole === UserRole.ADMIN || userRole === UserRole.HR;
-
-  const currentPss = useMemo(() => pssList.find(p => p.id === selectedPssId), [selectedPssId, pssList]);
-
-  const candidates = useMemo(() => {
-    let list = convocations.filter(c => c.pssId === selectedPssId);
-    
-    if (activeSubTab === 'classified') {
-      list = list.filter(c => c.status === ConvocationStatus.PENDING && !c.convocationAct);
-    } else if (activeSubTab === 'convoked') {
-      list = list.filter(c => c.status === ConvocationStatus.PENDING && c.convocationAct);
-    } else if (activeSubTab === 'substitution') {
-      // Candidatos pendentes aptos para substituição
-      list = list.filter(c => c.status === ConvocationStatus.PENDING);
+  const handleAdd = () => {
+    if (inputValue.trim()) {
+      onAdd(removeAccents(inputValue.trim()).toUpperCase());
+      setInputValue('');
     }
-
-    if (searchTerm) {
-      const lowSearch = removeAccents(searchTerm.toLowerCase());
-      list = list.filter(c => 
-        removeAccents(c.name.toLowerCase()).includes(lowSearch) || 
-        c.cpf.includes(searchTerm)
-      );
-    }
-
-    return list.sort((a, b) => a.ranking - b.ranking);
-  }, [convocations, selectedPssId, activeSubTab, searchTerm]);
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === candidates.length && candidates.length > 0) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(candidates.map(c => c.id));
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  const handleNomination = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedIds.length === 0) return;
-
-    // Sanitiza o ato de convocação retirando acentos
-    const sanitizedAct = removeAccents(nominationAct).toUpperCase();
-
-    setConvocations(prev => prev.map(c => 
-      selectedIds.includes(c.id) 
-        ? { ...c, convocationAct: sanitizedAct, convocationDate: nominationDate } 
-        : c
-    ));
-
-    const logType = activeSubTab === 'substitution' ? 'SUBSTITUIÇÃO' : 'CONVOCAÇÃO';
-    onLog(logType, `Chamamento realizado (${sanitizedAct}) para ${selectedIds.length} candidatos do edital ${currentPss?.title}.`);
-    
-    setShowNominationModal(false);
-    setSelectedIds([]);
-    setNominationAct('');
-    alert("Operação concluída com sucesso.");
-  };
-
-  const handleAddPss = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanTitle = removeAccents(newPssTitle).toUpperCase();
-    const newPss: PSS = { id: generateId(), title: cleanTitle, validUntil: newPssDate, isArchived: false, candidates: [] };
-    setPssList(prev => [...prev, newPss]);
-    setSelectedPssId(newPss.id);
-    setShowAddPssModal(false);
-    setNewPssTitle('');
-    onLog('CRIAR_PSS', `Novo Edital "${cleanTitle}" cadastrado.`);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedPssId) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const buffer = event.target?.result as ArrayBuffer;
-      let decoder = new TextDecoder('utf-8');
-      let text = decoder.decode(buffer);
-      
-      // Detecção de encoding para evitar caracteres estranhos
-      if (text.includes('\ufffd')) {
-        decoder = new TextDecoder('iso-8859-1');
-        text = decoder.decode(buffer);
-      }
-
-      const lines = text.split('\n');
-      const newCandidates: ConvokedPerson[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const separator = line.includes(';') ? ';' : ',';
-        const cols = line.split(separator).map(c => c.trim().replace(/^"|"$/g, ''));
-        
-        if (cols.length < 6) continue;
-
-        const [nome, cpf, email, perfil, modalidade, ranking] = cols;
-        let comp = CompetitionType.AC;
-        const modUpper = removeAccents(modalidade).toUpperCase();
-        if (modUpper.includes('PCD')) comp = CompetitionType.PCD;
-        if (modUpper.includes('PPP') || modUpper.includes('COTA')) comp = CompetitionType.PPP;
-
-        newCandidates.push({
-          id: generateId(), 
-          name: removeAccents(nome).toUpperCase(), 
-          cpf: maskCPF(cpf), // MEMORIZAÇÃO MASCARADA OBRIGATÓRIA
-          email: email.toLowerCase(), 
-          profile: removeAccents(perfil).toUpperCase(), 
-          notice: currentPss?.title || '',
-          pssId: selectedPssId, 
-          competition: comp, 
-          ranking: parseInt(ranking) || 99,
-          status: ConvocationStatus.PENDING, 
-          createdAt: new Date().toISOString()
-        });
-      }
-      
-      setConvocations(prev => [...prev, ...newCandidates]);
-      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos com dados sanitizados.`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsArrayBuffer(file);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-sm">
-        <div className="flex space-x-2 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200">
-          <button 
-            onClick={() => { setActiveSubTab('classified'); setSelectedIds([]); }} 
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-          >
-            Classificados
-          </button>
-          <button 
-            onClick={() => { setActiveSubTab('convoked'); setSelectedIds([]); }} 
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-          >
-            Chamamento Efetuado
-          </button>
-          <button 
-            onClick={() => { setActiveSubTab('substitution'); setSelectedIds([]); }} 
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'substitution' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
-          >
-            <span className="flex items-center"><Repeat size={12} className="mr-1.5"/> Substituição</span>
-          </button>
-        </div>
-
-        {canEdit && (
-          <button onClick={() => setShowAddPssModal(true)} className="px-8 py-3.5 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center hover:bg-blue-700 transition-all active:scale-95">
-            <Plus size={18} className="mr-2" /> Novo Edital PSS
-          </button>
-        )}
+    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-[450px]">
+      <div className="flex items-center space-x-3 mb-2">
+        <div className="p-2 bg-slate-50 text-slate-500 rounded-xl">{icon}</div>
+        <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{title}</h3>
+      </div>
+      <p className="text-[9px] text-slate-400 font-bold uppercase mb-6 leading-tight">{subtitle}</p>
+      
+      <div className="flex space-x-2 mb-6">
+        <input 
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="Novo item..."
+          className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-blue-500 transition-all"
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+        />
+        <button onClick={handleAdd} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md active:scale-95">
+          <Plus size={18}/>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <aside className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[500px]">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center"><Clock size={14} className="mr-2" /> Editais Ativos</h3>
-            <div className="space-y-2 overflow-y-auto max-h-[450px] pr-1 custom-scrollbar">
-              {pssList.map(p => (
-                <div key={p.id} onClick={() => { setSelectedPssId(p.id); setSelectedIds([]); }} className={`p-4 rounded-2xl border transition-all cursor-pointer ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
-                  <p className={`text-xs font-black truncate ${selectedPssId === p.id ? 'text-blue-700' : 'text-slate-800'}`}>{p.title}</p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Validade: {formatDisplayDate(p.validUntil)}</p>
-                </div>
-              ))}
-              {pssList.length === 0 && <p className="text-[10px] font-bold text-slate-300 uppercase text-center py-10">Nenhum edital cadastrado</p>}
+      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+        {items.map((item) => (
+          <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${item.status === 'inactive' ? 'bg-slate-50 opacity-60 border-transparent' : 'bg-white border-slate-100'}`}>
+            <span className={`text-[10px] font-bold uppercase truncate max-w-[120px] ${item.status === 'inactive' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+              {item.name}
+            </span>
+            <div className="flex items-center">
+              <button 
+                onClick={() => onToggleStatus(item)}
+                className={`p-1.5 rounded-lg transition-colors mr-1 ${item.status === 'inactive' ? 'text-slate-300 hover:text-blue-500' : 'text-blue-500 hover:bg-blue-50'}`}
+                title={item.status === 'active' ? 'Ocultar item' : 'Mostrar item'}
+              >
+                {item.status === 'inactive' ? <EyeOff size={14}/> : <Eye size={14}/>}
+              </button>
+              <button 
+                onClick={() => onAction(item)}
+                className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Excluir"
+              >
+                <Trash2 size={14}/>
+              </button>
             </div>
           </div>
-        </aside>
+        ))}
+      </div>
+    </div>
+  );
+};
 
-        <section className="lg:col-span-3">
-          {selectedPssId ? (
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><FileSpreadsheet className="mr-3 text-blue-600" size={20} /> {currentPss?.title}</h3>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-widest">
-                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos com ato de convocação publicado' : 'Fluxo de convocação para substituição'}
-                  </p>
-                </div>
+const SettingsView: React.FC<SettingsViewProps> = ({ 
+  parameters = [], setParameters, 
+  agencies = [], setAgencies,
+  units = [], setUnits,
+  profiles = [], setProfiles,
+  users = [], setUsers, 
+  vacancies = [],
+  convocations = [],
+  pssList = [],
+  onLog,
+  cloudStatus,
+  cloudErrorMessage,
+  emailConfig,
+  setEmailConfig,
+  onRestoreAll
+}) => {
+  const [activeSubTab, setActiveSubTab] = useState<'params' | 'users' | 'email' | 'cloud'>('params');
+  const [showParamModal, setShowParamModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  
+  const [newParam, setNewParam] = useState<Partial<LegalParameter>>({ 
+    label: '', days: 0, type: 'administrative', lawRef: '', articleRef: '', legalText: '', status: 'active'
+  });
 
-                <div className="flex flex-wrap gap-2">
-                  {activeSubTab !== 'convoked' && canEdit && (
-                    <>
-                      <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200">
-                        <Upload size={14} className="mr-2" /> Importar CSV
-                      </button>
-                      <button 
-                        disabled={selectedIds.length === 0}
-                        onClick={() => setShowNominationModal(true)} 
-                        className={`flex items-center px-6 py-2.5 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg disabled:opacity-30 disabled:grayscale ${activeSubTab === 'substitution' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
-                      >
-                        {activeSubTab === 'substitution' ? <Repeat size={14} className="mr-2"/> : <Megaphone size={14} className="mr-2" />}
-                        {activeSubTab === 'substitution' ? 'Substituir Agora' : 'Realizar Chamamento'} ({selectedIds.length})
-                      </button>
-                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv, .txt" className="hidden" />
-                    </>
-                  )}
-                </div>
-              </div>
+  const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-              <div className="relative mb-6">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input type="text" placeholder="Buscar por nome ou CPF..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" />
-              </div>
+  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.1
+CREATE TABLE IF NOT EXISTS public.sistemp_data (
+    id bigint PRIMARY KEY,
+    vacancies jsonb DEFAULT '[]'::jsonb,
+    parameters jsonb DEFAULT '[]'::jsonb,
+    convocations jsonb DEFAULT '[]'::jsonb,
+    pss_list jsonb DEFAULT '[]'::jsonb, 
+    users jsonb DEFAULT '[]'::jsonb,
+    agencies jsonb DEFAULT '[]'::jsonb,
+    units jsonb DEFAULT '[]'::jsonb,
+    profiles jsonb DEFAULT '[]'::jsonb,
+    email_config jsonb DEFAULT '{}'::jsonb,
+    logs jsonb DEFAULT '[]'::jsonb,
+    updated_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.sistemp_data TO anon;
+GRANT ALL ON TABLE public.sistemp_data TO authenticated;
+GRANT ALL ON TABLE public.sistemp_data TO service_role;
+GRANT ALL ON TABLE public.sistemp_data TO postgres;
+INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
 
-              <div className="overflow-hidden border border-slate-100 rounded-2xl">
-                <table className="w-full text-left text-[11px]">
-                  <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400 border-b border-slate-100">
-                    <tr>
-                      {activeSubTab !== 'convoked' && <th className="px-6 py-4 w-10 text-center"><input type="checkbox" checked={selectedIds.length === candidates.length && candidates.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded cursor-pointer" /></th>}
-                      <th className="px-6 py-4">Ranking</th>
-                      <th className="px-6 py-4">Candidato / CPF</th>
-                      <th className="px-6 py-4">Perfil</th>
-                      <th className="px-6 py-4">Modalidade</th>
-                      {(activeSubTab === 'convoked' || activeSubTab === 'substitution') && <th className="px-6 py-4">Ato / Portaria</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {candidates.map(c => (
-                      <tr key={c.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(c.id) ? 'bg-blue-50/30' : ''}`}>
-                        {activeSubTab !== 'convoked' && <td className="px-6 py-4 text-center"><input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => toggleSelect(c.id)} className="w-4 h-4 rounded cursor-pointer" /></td>}
-                        <td className="px-6 py-4 font-black text-slate-900">#{c.ranking}</td>
-                        <td className="px-6 py-4">
-                           <p className="font-bold text-slate-800">{c.name}</p>
-                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{c.cpf}</p>
-                        </td>
-                        <td className="px-6 py-4 font-medium text-slate-500 uppercase text-[10px]">{c.profile}</td>
-                        <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${c.competition === CompetitionType.AC ? 'bg-white text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>{c.competition}</span></td>
-                        {(activeSubTab === 'convoked' || activeSubTab === 'substitution') && (
-                          <td className="px-6 py-4">
-                            {c.convocationAct ? (
-                              <>
-                                <p className="font-black text-blue-600 uppercase">{c.convocationAct}</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase">{formatDisplayDate(c.convocationDate || '')}</p>
-                              </>
-                            ) : (
-                              <span className="text-slate-300 italic">Aguardando Ato</span>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    {candidates.length === 0 && (
-                      <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-widest opacity-30">Nenhum candidato filtrado</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-32 flex flex-col items-center justify-center text-center h-full">
-              <FileSpreadsheet size={64} className="text-slate-200 mb-6"/>
-              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Gestão de Classificados</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest max-w-xs">Selecione um edital para iniciar o chamamento ou substituição.</p>
-            </div>
-          )}
-        </section>
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(REPAIR_SQL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleItemAction = (item: GenericParameter, setter: any, type: string) => {
+    const isUsed = vacancies.some(v => type === 'a' ? v.agency === item.name : type === 'u' ? v.unit === item.name : v.type === item.name);
+    if (isUsed) return alert("Item em uso em grupos de vagas. Sugerimos apenas inativar/ocultar.");
+    if (confirm(`Remover permanentemente "${item.name}"?`)) {
+      setter((prev: any) => prev.filter((i: any) => i.id !== item.id));
+      onLog('CONFIGURAÇÃO', `Item "${item.name}" removido.`);
+    }
+  };
+
+  const handleToggleStatus = (item: GenericParameter, setter: any) => {
+    setter((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, status: i.status === 'active' ? 'inactive' : 'active' } : i));
+  };
+
+  const handleSaveParam = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p: LegalParameter = { ...newParam as LegalParameter, id: generateId(), label: removeAccents(newParam.label || '').toUpperCase() };
+    setParameters(prev => [...prev, p]);
+    setShowParamModal(false);
+    onLog('CONFIGURAÇÃO', `Novo prazo legal "${p.label}" adicionado.`);
+  };
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const user: User = { ...newUser, id: generateId() };
+    setUsers(prev => [...prev, user]);
+    setShowUserModal(false);
+    onLog('USUÁRIOS', `Operador "${user.name}" cadastrado.`);
+    setNewUser({ name: '', username: '', password: '', role: UserRole.HR });
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex space-x-2 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200">
+        <button onClick={() => setActiveSubTab('params')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeSubTab === 'params' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>Prazos e Perfis</button>
+        <button onClick={() => setActiveSubTab('users')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeSubTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>Operadores</button>
+        <button onClick={() => setActiveSubTab('email')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeSubTab === 'email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>Notificações</button>
+        <button onClick={() => setActiveSubTab('cloud')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeSubTab === 'cloud' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'}`}>Conexão e Nuvem</button>
       </div>
 
-      {showNominationModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
-            <button onClick={() => setShowNominationModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-            <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">
-              {activeSubTab === 'substitution' ? 'Substituição' : 'Chamamento'}
-            </h2>
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Processando {selectedIds.length} candidatos do edital {currentPss?.title}</p>
-            <form onSubmit={handleNomination} className="space-y-4">
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato / Portaria (Será salvo sem acentos)</label>
-                <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
+      {activeSubTab === 'cloud' && (
+        <div className="space-y-6 animate-in fade-in">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Nuvem</h3>
+                {cloudStatus === 'connected' ? (
+                   <div className="p-8 bg-green-50 rounded-[2rem] border border-green-200 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24}/></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase">Sincronização Ativa</p>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">SISTEMA INTEGRADO AO SUPABASE</p>
+                        </div>
+                      </div>
+                      <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Online</span>
+                   </div>
+                ) : (
+                  <div className="p-8 bg-amber-50 rounded-[2rem] border border-amber-200 flex items-center justify-between animate-pulse">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><RefreshCw size={24} className="animate-spin" /></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase">Processando...</p>
+                          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">Status: {cloudStatus}</p>
+                        </div>
+                      </div>
+                  </div>
+                )}
+            </div>
+
+            <div className="bg-white p-10 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm relative overflow-hidden">
+                <div className="flex items-center space-x-3 mb-4">
+                    <DatabaseZap className="text-indigo-600" size={28}/><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL de Reparo Supabase</h3>
+                </div>
+                <div className="bg-slate-900 rounded-[1.5rem] p-6 relative group border border-slate-800">
+                    <button onClick={handleCopySql} className="absolute top-4 right-4 px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl">{copied ? 'Copiado!' : 'Copiar Script SQL'}</button>
+                    <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">{REPAIR_SQL}</pre>
+                </div>
+                <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center"><Info size={12} className="mr-2"/> Utilize este script caso ocorra erro 42P01 ou perda de tabelas.</p>
+            </div>
+
+            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-200 shadow-sm">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="flex items-center space-x-4">
+                        <div className="p-4 bg-red-600 text-white rounded-2xl shadow-lg"><Bomb size={24}/></div>
+                        <div>
+                            <h3 className="text-sm font-black text-red-800 uppercase tracking-tighter">Zona de Perigo: Reset Mestre</h3>
+                            <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest max-w-sm">Apaga permanentemente todos os dados e restaura padrões de fábrica.</p>
+                        </div>
+                    </div>
+                    <button onClick={() => {
+                        const pwd = window.prompt("Digite a SENHA MESTRA para confirmar o reset total:");
+                        if (pwd === "1!Leinad") onRestoreAll();
+                    }} className="px-8 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-red-700 transition-all border border-red-500">
+                        <RefreshCw size={14} className="mr-2" /> Zerar Tudo
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {activeSubTab === 'params' && (
+        <div className="space-y-8 animate-in fade-in">
+          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl mr-3"><Scale size={20}/></div>
+                <div><h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Prazos Legais (Sem Acentos)</h3><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Base de cálculo para vencimentos</p></div>
               </div>
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Data da Convocação</label>
-                <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" />
-              </div>
-              <button type="submit" className={`w-full py-4 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 transition-all ${activeSubTab === 'substitution' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                Confirmar {activeSubTab === 'substitution' ? 'Substituição' : 'Chamamento'}
-              </button>
-            </form>
+              <button onClick={() => setShowParamModal(true)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-blue-700 transition-all flex items-center"><Plus size={14} className="mr-1.5"/> Novo Prazo</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {parameters.filter(p => p && p.label).map((p) => (
+                <div key={p.id} className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-blue-200 transition-all flex items-center justify-between group">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{p.lawRef || 'Lei 8.745'}</p>
+                    <p className="font-bold text-slate-800 text-xs">{p.label}</p>
+                    <span className="text-[8px] font-black text-blue-600 uppercase">{p.days} Dias de Saldo</span>
+                  </div>
+                  <button onClick={() => setParameters(prev => prev.filter(item => item.id !== p.id))} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <ListManager title="Órgãos" subtitle="Órgãos Solicitantes" items={agencies} onAdd={(name) => setAgencies((p:any) => [{id: generateId(), name, status:'active'}, ...p])} onAction={(i) => handleItemAction(i, setAgencies, 'a')} onToggleStatus={(i) => handleToggleStatus(i, setAgencies)} icon={<Building2/>} />
+            <ListManager title="Unidades" subtitle="Unidades de Lotação" items={units} onAdd={(name) => setUnits((p:any) => [{id: generateId(), name, status:'active'}, ...p])} onAction={(i) => handleItemAction(i, setUnits, 'u')} onToggleStatus={(i) => handleToggleStatus(i, setUnits)} icon={<MapPin/>} />
+            <ListManager title="Perfis" subtitle="Perfis Profissionais" items={profiles} onAdd={(name) => setProfiles((p:any) => [{id: generateId(), name, status:'active'}, ...p])} onAction={(i) => handleItemAction(i, setProfiles, 'p')} onToggleStatus={(i) => handleToggleStatus(i, setProfiles)} icon={<Briefcase/>} />
           </div>
         </div>
       )}
 
-      {showAddPssModal && (
+      {/* Outros modais (Param e User) permanecem com as lógicas de sanitização implementadas */}
+      {showParamModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
-            <button onClick={() => setShowAddPssModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-            <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">Novo Edital</h2>
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Cadastro de Novo Processo Seletivo</p>
-            <form onSubmit={handleAddPss} className="space-y-4">
-              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Ex: PSS 01/2024 - Professor" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Validade do Edital</label>
-                <input type="date" value={newPssDate} onChange={e => setNewPssDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-              </div>
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95">Salvar Edital</button>
+            <button onClick={() => setShowParamModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Novo Prazo</h2>
+            <form onSubmit={handleSaveParam} className="space-y-4">
+              <input value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} required placeholder="Ex: Art 2, IV" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              <input type="number" value={newParam.days} onChange={e => setNewParam({...newParam, days: parseInt(e.target.value)})} required placeholder="Quantidade de Dias" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95">Salvar Prazo</button>
             </form>
           </div>
         </div>
@@ -351,4 +300,4 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   );
 };
 
-export default ConvocationManagement;
+export default SettingsView;
