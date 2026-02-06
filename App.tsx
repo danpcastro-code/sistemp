@@ -74,7 +74,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const handleMasterReset = () => {
-    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados inseridos serão apagados. Deseja continuar?")) return;
+    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados inseridos serão apagados do sistema local e da nuvem. Deseja continuar?")) return;
     setVacancies([]);
     setConvocations([]);
     setPssList([]);
@@ -140,13 +140,12 @@ const App: React.FC = () => {
         setProfiles(safeArr(data.profiles).length ? data.profiles : [{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
         setConvocations(safeArr(data.convocations));
         
-        // Garantia de PSS List e Email Config mesmo se vierem vazios do banco
         const remotePss = safeArr(data.pss_list);
         setPssList(remotePss.length ? remotePss : INITIAL_PSS);
         
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
-        setEmailConfig(data.email_config && Object.keys(data.email_config).length ? data.email_config : DEFAULT_EMAIL_CONFIG);
+        setEmailConfig(data.email_config && typeof data.email_config === 'object' && Object.keys(data.email_config).length > 0 ? data.email_config : DEFAULT_EMAIL_CONFIG);
         setCloudStatus('connected');
       } else if (error) {
          setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
