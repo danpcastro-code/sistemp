@@ -32,14 +32,12 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   const [showNominationModal, setShowNominationModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados para Seleção
+  // Estados para Seleção Múltipla
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
-  // Estados para Novo PSS
+  // Estados para Modal
   const [newPssTitle, setNewPssTitle] = useState('');
   const [newPssDate, setNewPssDate] = useState('');
-  
-  // Estados para Nomeação (Chamamento)
   const [nominationAct, setNominationAct] = useState('');
   const [nominationDate, setNominationDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -48,7 +46,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
 
   const currentPss = useMemo(() => pssList.find(p => p.id === selectedPssId), [selectedPssId, pssList]);
 
-  // Candidatos filtrados por PSS e Status
   const candidates = useMemo(() => {
     let list = convocations.filter(c => c.pssId === selectedPssId);
     
@@ -69,7 +66,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   }, [convocations, selectedPssId, activeSubTab, searchTerm]);
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === candidates.length) {
+    if (selectedIds.length === candidates.length && candidates.length > 0) {
       setSelectedIds([]);
     } else {
       setSelectedIds(candidates.map(c => c.id));
@@ -134,7 +131,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         });
       }
       setConvocations(prev => [...prev, ...newCandidates]);
-      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos.`);
+      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos para o edital ${currentPss?.title}.`);
     };
     reader.readAsText(file);
   };
@@ -143,8 +140,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-sm">
         <div className="flex space-x-2 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200">
-          <button onClick={() => setActiveSubTab('classified')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Classificados</button>
-          <button onClick={() => setActiveSubTab('convoked')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Nomeações / Chamamento</button>
+          <button onClick={() => { setActiveSubTab('classified'); setSelectedIds([]); }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'classified' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Classificados</button>
+          <button onClick={() => { setActiveSubTab('convoked'); setSelectedIds([]); }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeSubTab === 'convoked' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Nomeações / Chamamento</button>
         </div>
 
         {canEdit && (
@@ -165,6 +162,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                   <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Validade: {formatDisplayDate(p.validUntil)}</p>
                 </div>
               ))}
+              {pssList.length === 0 && <p className="text-[10px] font-bold text-slate-300 uppercase text-center py-10">Nenhum edital cadastrado</p>}
             </div>
           </div>
         </aside>
@@ -184,7 +182,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                   {activeSubTab === 'classified' && canEdit && (
                     <>
                       <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200">
-                        <Upload size={14} className="mr-2" /> Importar
+                        <Upload size={14} className="mr-2" /> Importar CSV
                       </button>
                       <button 
                         disabled={selectedIds.length === 0}
@@ -208,7 +206,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <table className="w-full text-left text-[11px]">
                   <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400 border-b border-slate-100">
                     <tr>
-                      {activeSubTab === 'classified' && <th className="px-6 py-4 w-10"><input type="checkbox" checked={selectedIds.length === candidates.length && candidates.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded" /></th>}
+                      {activeSubTab === 'classified' && <th className="px-6 py-4 w-10 text-center"><input type="checkbox" checked={selectedIds.length === candidates.length && candidates.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded cursor-pointer" /></th>}
                       <th className="px-6 py-4">Ranking</th>
                       <th className="px-6 py-4">Candidato / CPF</th>
                       <th className="px-6 py-4">Perfil</th>
@@ -219,12 +217,15 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                   <tbody className="divide-y divide-slate-100">
                     {candidates.map(c => (
                       <tr key={c.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(c.id) ? 'bg-blue-50/30' : ''}`}>
-                        {activeSubTab === 'classified' && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => toggleSelect(c.id)} className="w-4 h-4 rounded" /></td>}
+                        {activeSubTab === 'classified' && <td className="px-6 py-4 text-center"><input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => toggleSelect(c.id)} className="w-4 h-4 rounded cursor-pointer" /></td>}
                         <td className="px-6 py-4 font-black text-slate-900">#{c.ranking}</td>
-                        <td className="px-6 py-4"><p className="font-bold text-slate-800">{c.name}</p><p className="text-[9px] text-slate-400 font-mono">{maskCPF(c.cpf)}</p></td>
-                        <td className="px-6 py-4 font-medium text-slate-500">{c.profile}</td>
-                        <td className="px-6 py-4"><span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-white">{c.competition}</span></td>
-                        {activeSubTab === 'convoked' && <td className="px-6 py-4"><p className="font-black text-blue-600">{c.convocationAct}</p><p className="text-[9px] text-slate-400">{formatDisplayDate(c.convocationDate || '')}</p></td>}
+                        <td className="px-6 py-4">
+                           <p className="font-bold text-slate-800">{c.name}</p>
+                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{maskCPF(c.cpf)}</p>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-500 uppercase text-[10px]">{c.profile}</td>
+                        <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${c.competition === CompetitionType.AC ? 'bg-white text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>{c.competition}</span></td>
+                        {activeSubTab === 'convoked' && <td className="px-6 py-4"><p className="font-black text-blue-600 uppercase">{c.convocationAct}</p><p className="text-[9px] text-slate-400 font-bold uppercase">{formatDisplayDate(c.convocationDate || '')}</p></td>}
                       </tr>
                     ))}
                     {candidates.length === 0 && (
@@ -247,20 +248,20 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       {/* MODAL: NOMEAÇÃO / CHAMAMENTO */}
       {showNominationModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
             <button onClick={() => setShowNominationModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">Realizar Chamamento</h2>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Convocando {selectedIds.length} candidatos para o edital {currentPss?.title}</p>
             <form onSubmit={handleNomination} className="space-y-4">
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato / Portaria de Convocação</label>
-                <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10" />
+                <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
               </div>
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Data da Convocação</label>
-                <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" />
               </div>
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95">Confirmar Chamamento</button>
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 hover:bg-blue-700 transition-all">Confirmar Chamamento em Massa</button>
             </form>
           </div>
         </div>
@@ -269,12 +270,12 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       {/* MODAL: NOVO PSS */}
       {showAddPssModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
             <button onClick={() => setShowAddPssModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">Novo Edital</h2>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Cadastro de Novo Processo Seletivo</p>
             <form onSubmit={handleAddPss} className="space-y-4">
-              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Ex: PSS 01/2024 - Professor" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10" />
+              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Ex: PSS 01/2024 - Professor" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Validade do Edital</label>
                 <input type="date" value={newPssDate} onChange={e => setNewPssDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
