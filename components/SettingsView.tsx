@@ -131,7 +131,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- SCRIPT DE REPARO COMPLETO - CTU GESTÃO
+  // REPARO SQL DEFINITIVO INCLUINDO PSS_LIST
+  const REPAIR_SQL = `-- SCRIPT DE REPARO COMPLETO - CTU GESTÃO v2
 CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
@@ -208,19 +209,30 @@ INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
         <div className="space-y-6 animate-in fade-in">
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Nuvem</h3>
-                <div className="p-8 bg-green-50 rounded-[2rem] border border-green-200 flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24}/></div>
-                      <div>
-                        <p className="text-xs font-black text-slate-800 uppercase">Sistema Sincronizado</p>
-                        <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">Nuvem Supabase Ativa</p>
+                {cloudStatus === 'connected' ? (
+                   <div className="p-8 bg-green-50 rounded-[2rem] border border-green-200 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24}/></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase">Sistema Sincronizado</p>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">Nuvem Supabase Ativa</p>
+                        </div>
                       </div>
-                    </div>
-                    <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Online</span>
-                </div>
+                      <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Online</span>
+                   </div>
+                ) : (
+                  <div className="p-8 bg-amber-50 rounded-[2rem] border border-amber-200 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><RefreshCw size={24} className="animate-spin" /></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase">Sincronizando Dados...</p>
+                          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">Estado: {cloudStatus}</p>
+                        </div>
+                      </div>
+                  </div>
+                )}
             </div>
 
-            {/* ZONA DE PERIGO PROTEGIDA */}
             <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-200 shadow-sm">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center space-x-4">
@@ -238,17 +250,20 @@ INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
 
             <div className="bg-white p-10 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm relative overflow-hidden">
                 <div className="flex items-center space-x-3 mb-4">
-                    <DatabaseZap className="text-indigo-600" size={28}/><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL de Instalação/Reparo</h3>
+                    <DatabaseZap className="text-indigo-600" size={28}/><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL de Instalação/Reparo v2</h3>
                 </div>
                 <div className="bg-slate-900 rounded-[1.5rem] p-6 relative group border border-slate-800">
                     <button onClick={handleCopySql} className="absolute top-4 right-4 px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl">{copied ? 'Copiado!' : 'Copiar Script SQL'}</button>
                     <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">{REPAIR_SQL}</pre>
                 </div>
+                <div className="mt-4 flex items-center space-x-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                  <Info size={12} />
+                  <span>Execute este script no editor SQL do Supabase caso a sincronização falhe após atualizações.</span>
+                </div>
             </div>
         </div>
       )}
 
-      {/* OUTRAS ABAS MANTIDAS... (Params, Users, Email) */}
       {activeSubTab === 'params' && (
         <div className="space-y-8 animate-in fade-in">
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
@@ -282,7 +297,7 @@ INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
         </div>
       )}
 
-      {/* MODAIS MANTIDOS... */}
+      {/* Outros modais e seções omitidos para brevidade... */}
     </div>
   );
 };
