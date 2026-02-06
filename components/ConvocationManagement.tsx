@@ -156,10 +156,13 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         if (modUpper.includes('PCD')) comp = CompetitionType.PCD;
         if (modUpper.includes('PPP') || modUpper.includes('COTA')) comp = CompetitionType.PPP;
 
+        // SALVAMOS O CPF BRUTO (Apenas números) para integridade de dados
+        const rawCpf = cpf.replace(/\D/g, '');
+
         newCandidates.push({
           id: generateId(), 
           name: removeAccents(nome).toUpperCase(), 
-          cpf: maskCPF(cpf), 
+          cpf: rawCpf, 
           email: email.toLowerCase(), 
           profile: removeAccents(perfil).toUpperCase(), 
           notice: currentPss?.title || '',
@@ -283,7 +286,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                         <td className="px-6 py-4 font-black text-slate-900">#{c.ranking}</td>
                         <td className="px-6 py-4">
                            <p className="font-bold text-slate-800">{c.name}</p>
-                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{c.cpf}</p>
+                           {/* AQUI APLICAMOS A MÁSCARA DINAMICAMENTE PARA EXIBIÇÃO */}
+                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{maskCPF(c.cpf)}</p>
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-500 uppercase text-[10px]">{c.profile}</td>
                         <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${c.competition === CompetitionType.AC ? 'bg-white text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>{c.competition}</span></td>
