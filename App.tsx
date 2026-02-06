@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
 // ============================================================================
-// ⚠️ ÁREA DE CONFIGURAÇÃO DO BANCO DE DADOS (SUPABASE)
+// ⚠️ CREDENCIAIS ATUALIZADAS DO BANCO DE DADOS (SUPABASE)
 // ============================================================================
 const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
@@ -77,8 +77,8 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
+  // FUNÇÃO DE RESET TOTAL (Zerar Base de Dados)
   const handleMasterReset = () => {
-    // Retorna o sistema ao estado "virgem"
     setVacancies([]);
     setConvocations([]);
     setPssList([]);
@@ -88,15 +88,14 @@ const App: React.FC = () => {
     setUsers(DEFAULT_USERS);
     setLogs([]);
     setEmailConfig(DEFAULT_EMAIL_CONFIG);
-    // Mantemos INITIAL_PARAMETERS pois são as definições de lei básicas do sistema
-    setParameters(INITIAL_PARAMETERS);
+    setParameters(INITIAL_PARAMETERS); // Preserva leis básicas
     
     isDirty.current = true;
-    addLog('SISTEMA', 'RESTAURAÇÃO COMPLETA: Toda a base de dados manual foi apagada.');
+    addLog('SISTEMA', 'RESTAURAÇÃO COMPLETA: Base de dados limpa via senha mestra.');
     
-    // Força gravação imediata
+    // Força gravação imediata para limpar a nuvem também
     setTimeout(() => saveToCloud(), 500);
-    alert("Sistema restaurado com sucesso. Todos os dados foram apagados.");
+    alert("Sistema restaurado com sucesso. Todos os dados inseridos manualmente foram apagados.");
   };
 
   const handleLogin = (user: User) => {
@@ -117,10 +116,22 @@ const App: React.FC = () => {
     setCloudStatus('syncing');
     try {
       const payload = { 
-        id: 1, vacancies, parameters, agencies, units, profiles, convocations, pss_list: pssList, users, logs,
-        email_config: emailConfig, updated_at: new Date().toISOString()
+        id: 1, 
+        vacancies, 
+        parameters, 
+        agencies, 
+        units, 
+        profiles, 
+        convocations, 
+        pss_list: pssList, 
+        users, 
+        logs,
+        email_config: emailConfig, 
+        updated_at: new Date().toISOString()
       };
+
       const { error } = await supabase.from('sistemp_data').upsert(payload);
+      
       if (!error) {
           isDirty.current = false;
           setCloudStatus('connected');
