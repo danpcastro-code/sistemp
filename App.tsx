@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
 // ============================================================================
-// ⚠️ CREDENCIAIS SUPABASE (CONECTADAS AO SCHEMA ATUALIZADO)
+// ⚠️ CREDENCIAIS SUPABASE (CONECTADAS AO SCHEMA ATUALIZADO v2.2)
 // ============================================================================
 const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
@@ -142,7 +142,7 @@ const App: React.FC = () => {
         setUnits(safeArr(data.units));
         setProfiles(safeArr(data.profiles));
         setConvocations(safeArr(data.convocations));
-        setPssList(safeArr(data.pss_list));
+        setPssList(safeArr(data.pss_list).length ? data.pss_list : INITIAL_PSS);
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
@@ -164,7 +164,6 @@ const App: React.FC = () => {
 
   useEffect(() => { loadFromCloud(); }, [loadFromCloud]);
 
-  // Observer de mudanças para acionar o isDirty e o salvamento automático
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       isDirty.current = true;
