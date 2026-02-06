@@ -1,6 +1,11 @@
 
-import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOfDay } from 'date-fns';
+import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOfDay, isValid } from 'date-fns';
 import { Vacancy, Occupation, ContractStatus } from './types';
+
+/**
+ * Gera um ID único aleatório.
+ */
+export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
  * Remove acentuação e caracteres especiais de uma string.
@@ -10,39 +15,18 @@ export const removeAccents = (str: string): string => {
   return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-    .replace(/[^\x00-\x7F]/g, ''); // Remove qualquer outro caractere não-ASCII (limpeza profunda)
+    .replace(/[^\x00-\x7F]/g, ''); // Remove qualquer outro caractere não-ASCII
 };
 
 /**
  * Transforma e memoriza o CPF no formato mascarado: ***.XXX.XXX-**
- * Independente de como ele entre no sistema, será armazenado assim.
  */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '***.***.***-**';
-  
-  // Se já estiver mascarado no formato correto, retorna como está
-  if (cpf.startsWith('***') && cpf.includes('.') && cpf.endsWith('**')) {
-    return cpf;
-  }
-
   const digits = cpf.replace(/\D/g, '');
-  
-  // Se for um CPF original completo (11 dígitos)
   if (digits.length === 11) {
-    const part1 = digits.substring(3, 6);
-    const part2 = digits.substring(6, 9);
-    return `***.${part1}.${part2}-**`;
+    return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
   }
-  
-  // Caso entre um CPF parcial ou já com alguma máscara incompleta
-  // Tenta extrair o que for possível ou retorna o placeholder
-  const cleanDigits = digits.substring(0, 6);
-  if (cleanDigits.length >= 3) {
-    const p1 = cleanDigits.substring(0, 3);
-    const p2 = cleanDigits.substring(3, 6) || '***';
-    return `***.${p1}.${p2}-**`;
-  }
-
   return '***.***.***-**';
 };
 
@@ -55,7 +39,7 @@ export const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
   try {
     const date = parseISO(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
+    if (!isValid(date)) return dateStr;
     return format(date, 'dd-MM-yyyy');
   } catch {
     return dateStr;
@@ -81,53 +65,35 @@ export const calculateProjectedEndDate = (startDate: string, remainingDays: numb
   return format(addDays(parseISO(startDate), remainingDays - 1), 'yyyy-MM-dd');
 };
 
+/**
+ * Sugere uma data de término inicial (geralmente 1 ano após o início).
+ */
 export const suggestInitialEndDate = (startDate: string): string => {
-  return format(subDays(addYears(parseISO(startDate), 1), 0), 'yyyy-MM-dd');
+  if (!startDate) return '';
+  try {
+    return format(subDays(addYears(parseISO(startDate), 1), 1), 'yyyy-MM-dd');
+  } catch {
+    return '';
+  }
 };
 
-export const generateId = () => Math.random().toString(36).substr(2, 9);
-
+/**
+ * Calcula informações de alertas contratuais (90 dias).
+ */
 export const getWarningInfo = (occ: Occupation) => {
   const today = startOfDay(new Date());
-  const endDate = parseISO(occ.endDate);
-  const maxDate = parseISO(occ.projectedFinalDate);
-  
-  const daysToCurrentEnd = differenceInDays(endDate, today);
-  const daysToMaxEnd = differenceInDays(maxDate, today);
-
-  if (daysToMaxEnd <= 90) {
-    return {
-      isWarning: true,
-      daysLeft: daysToMaxEnd,
-      type: 'termination',
-      date: occ.projectedFinalDate,
-      label: 'Término Improrrogável'
-    };
+  if (!occ.endDate || occ.status === ContractStatus.ENDED) {
+    return { isWarning: false, daysLeft: 0, label: '', type: '' };
   }
 
-  if (occ.isExtensionRequired && daysToCurrentEnd <= 90) {
-    return {
-      isWarning: true,
-      daysLeft: daysToCurrentEnd,
-      type: 'extension',
-      date: occ.endDate,
-      label: 'Necessita Prorrogação'
-    };
+  const end = parseISO(occ.endDate);
+  const diff = differenceInDays(end, today);
+
+  if (diff <= 30 && diff >= 0) {
+    return { isWarning: true, daysLeft: diff, label: 'Crítico: Término Iminente', type: 'termination' };
+  } else if (diff <= 90 && diff >= 0) {
+    return { isWarning: true, daysLeft: diff, label: 'Alerta: Fim em 90 dias', type: 'extension' };
   }
 
-  return { isWarning: false, daysLeft: 999, type: 'none', date: '', label: '' };
-};
-
-export const getVacancyStats = (vacancy: Vacancy) => {
-  const totalCapacityDays = vacancy.maxTermDays * vacancy.initialQuantity;
-  const daysUsedTotal = calculateDaysUsed(vacancy.occupations);
-  const daysRemainingTotal = Math.max(0, totalCapacityDays - daysUsedTotal);
-  
-  return { 
-    daysUsedTotal, 
-    daysRemainingTotal, 
-    totalCapacityDays, 
-    currentlyActiveCount: vacancy.occupations.filter(o => o.status === ContractStatus.ACTIVE).length,
-    percentageUsedTotal: totalCapacityDays > 0 ? (daysUsedTotal / totalCapacityDays) * 100 : 0
-  };
+  return { isWarning: false, daysLeft: diff, label: '', type: '' };
 };
