@@ -52,7 +52,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     } else if (activeSubTab === 'convoked') {
       list = list.filter(c => c.status === ConvocationStatus.PENDING && c.convocationAct);
     } else if (activeSubTab === 'substitution') {
-      // Candidatos ainda pendentes que podem ser usados para substituição
       list = list.filter(c => c.status === ConvocationStatus.PENDING);
     }
 
@@ -160,7 +159,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       }
       
       setConvocations(prev => [...prev, ...newCandidates]);
-      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos com sucesso.`);
+      onLog('IMPORTAÇÃO', `Importados ${newCandidates.length} candidatos do edital ${currentPss?.title}.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsArrayBuffer(file);
@@ -168,7 +167,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* CABEÇALHO COM TABS DE FILTRO */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-sm">
         <div className="flex space-x-2 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200">
           <button 
@@ -199,7 +197,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* LISTA LATERAL DE EDITAIS */}
         <aside className="lg:col-span-1">
           <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[500px]">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center"><Clock size={14} className="mr-2" /> Editais Ativos</h3>
@@ -215,7 +212,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
           </div>
         </aside>
 
-        {/* ÁREA PRINCIPAL DE CANDIDATOS */}
         <section className="lg:col-span-3">
           {selectedPssId ? (
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
@@ -223,7 +219,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <div>
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><FileSpreadsheet className="mr-3 text-blue-600" size={20} /> {currentPss?.title}</h3>
                   <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-widest">
-                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento inicial' : activeSubTab === 'convoked' ? 'Candidatos com ato de convocação publicado' : 'Convocação para preenchimento de vagas remanescentes'}
+                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos convocados' : 'Processo de substituição (vagas remanescentes)'}
                   </p>
                 </div>
 
@@ -289,9 +285,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                         )}
                       </tr>
                     ))}
-                    {candidates.length === 0 && (
-                      <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-widest opacity-30">Nenhum candidato filtrado</td></tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -306,7 +299,6 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         </section>
       </div>
 
-      {/* MODAL DE NOMEAÇÃO / SUBSTITUIÇÃO */}
       {showNominationModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
@@ -316,14 +308,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
             </h2>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Processando {selectedIds.length} candidatos do edital {currentPss?.title}</p>
             <form onSubmit={handleNomination} className="space-y-4">
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato / Portaria (Salvo sem acentos)</label>
-                <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
-              </div>
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Data da Convocação</label>
-                <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" />
-              </div>
+              <input value={nominationAct} onChange={e => setNominationAct(e.target.value)} required placeholder="Ex: Portaria 123/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
+              <input type="date" value={nominationDate} onChange={e => setNominationDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" />
               <button type="submit" className={`w-full py-4 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 transition-all ${activeSubTab === 'substitution' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                 Confirmar {activeSubTab === 'substitution' ? 'Substituição' : 'Chamamento'}
               </button>
@@ -332,19 +318,14 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL DE ADIÇÃO DE PSS */}
       {showAddPssModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
             <button onClick={() => setShowAddPssModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h2 className="text-2xl font-black mb-1 text-slate-800 uppercase tracking-tighter">Novo Edital</h2>
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-8">Cadastro de Novo Processo Seletivo</p>
             <form onSubmit={handleAddPss} className="space-y-4">
-              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Ex: PSS 01/2024 - Professor" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Validade do Edital</label>
-                <input type="date" value={newPssDate} onChange={e => setNewPssDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
-              </div>
+              <input value={newPssTitle} onChange={e => setNewPssTitle(e.target.value)} required placeholder="Ex: PSS 01/2024" className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" />
+              <input type="date" value={newPssDate} onChange={e => setNewPssDate(e.target.value)} required className="w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
               <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95">Salvar Edital</button>
             </form>
           </div>
