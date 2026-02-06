@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { LegalParameter, User, Vacancy, ConvokedPerson, UserRole, EmailConfig, PSS, GenericParameter } from '../types';
 import { removeAccents, generateId } from '../utils';
 import { 
-  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, DatabaseZap, Bomb, RefreshCw, Check, KeyRound, Terminal
+  Plus, Trash2, Building2, MapPin, X, UserPlus, Mail, Clock, Briefcase, Activity, Users as UsersIcon, Save, ShieldAlert, Lock, Info, EyeOff, Eye, Scale, DatabaseZap, Bomb, RefreshCw, Check, KeyRound, Terminal
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -103,7 +103,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   agencies = [], setAgencies,
   units = [], setUnits,
   profiles = [], setProfiles,
-  users = [], setUsers, 
+  users = [], setUsers,
+  vacancies = [],
+  convocations = [],
+  pssList = [],
   onLog,
   cloudStatus,
   emailConfig,
@@ -121,8 +124,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.5
--- 1. Criação da Tabela Centralizada
+  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.6
+-- 1. Criação/Atualização da Tabela Centralizada
 CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
@@ -138,16 +141,16 @@ CREATE TABLE IF NOT EXISTS public.sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Garantia de colunas e permissões
+-- 2. Permissões Globais
 ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE public.sistemp_data TO anon;
 GRANT ALL ON TABLE public.sistemp_data TO authenticated;
 GRANT ALL ON TABLE public.sistemp_data TO service_role;
 
--- 3. Inicialização do Registro ID 1
+-- 3. Inicialização de Registro Mestre
 INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
-COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
+COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gestão';`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(REPAIR_SQL);
@@ -227,26 +230,27 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
                 <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center"><Info size={12} className="mr-2"/> Utilize este script caso ocorra erro 42P01 ou perda de tabelas.</p>
             </div>
 
-            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-200 shadow-sm mt-8">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-4 bg-red-600 text-white rounded-2xl shadow-lg"><Bomb size={24}/></div>
-                        <div>
-                            <h3 className="text-sm font-black text-red-800 uppercase tracking-tighter">Zona de Perigo: Master Reset</h3>
-                            <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest">Apaga permanentemente todos os dados e restaura padrões de fábrica.</p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={() => {
-                            const pwd = window.prompt("Digite a SENHA MESTRA para confirmar o reset total:");
-                            if (pwd === "1!Leinad") onRestoreAll();
-                            else if (pwd !== null) alert("Senha incorreta.");
-                        }} 
-                        className="px-8 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all border border-red-500 flex items-center"
-                    >
-                        <RefreshCw size={14} className="mr-2" /> Zerar Todo o Sistema
-                    </button>
+            {/* ZONA DE PERIGO - BOTÃO ZERAR SISTEMA RESTAURADO */}
+            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-100 shadow-sm mt-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="p-4 bg-red-600 text-white rounded-2xl shadow-lg"><Bomb size={24}/></div>
+                  <div>
+                    <h3 className="text-sm font-black text-red-800 uppercase tracking-tighter">Zona de Perigo: Master Reset</h3>
+                    <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest leading-relaxed max-w-sm">Esta ação apaga permanentemente todos os registros (vagas, contratos, operadores) e restaura os padrões de fábrica.</p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => {
+                    const pwd = window.prompt("⚠️ AÇÃO IRREVERSÍVEL\nDigite a SENHA MESTRA para confirmar a limpeza total de dados:");
+                    if (pwd === "1!Leinad") onRestoreAll();
+                    else if (pwd !== null) alert("Senha incorreta. Acesso negado.");
+                  }} 
+                  className="px-8 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all border border-red-500 flex items-center active:scale-95"
+                >
+                  <RefreshCw size={14} className="mr-2" /> Zerar Todo o Sistema
+                </button>
+              </div>
             </div>
         </div>
       )}
@@ -282,12 +286,13 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
         </div>
       )}
 
+      {/* TELA DE OPERADORES - CORRIGIDA */}
       {activeSubTab === 'users' && (
         <div className="space-y-6 animate-in fade-in">
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center">
-                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl mr-3"><Users size={20}/></div>
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl mr-3"><UsersIcon size={20}/></div>
                 <div><h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Operadores do Sistema</h3><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Gestão de permissões e acessos</p></div>
               </div>
               <button onClick={() => setShowUserModal(true)} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-indigo-700 transition-all flex items-center"><UserPlus size={14} className="mr-1.5"/> Novo Operador</button>
@@ -320,6 +325,7 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
         </div>
       )}
 
+      {/* TELA DE NOTIFICAÇÕES - CORRIGIDA */}
       {activeSubTab === 'email' && (
         <div className="space-y-6 animate-in fade-in">
           <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
@@ -337,15 +343,15 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
                 <div className="space-y-4">
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Service ID</label>
-                    <input value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="service_xxxxxx" />
+                    <input value={emailConfig?.serviceId || ''} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="service_xxxxxx" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Template ID</label>
-                    <input value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="template_xxxxxx" />
+                    <input value={emailConfig?.templateId || ''} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="template_xxxxxx" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Public Key</label>
-                    <input value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="user_xxxxxx" />
+                    <input value={emailConfig?.publicKey || ''} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="user_xxxxxx" />
                   </div>
                 </div>
               </div>
@@ -355,11 +361,11 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de dados centralizada v2.5';`;
                 <div className="space-y-4">
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assunto do E-mail</label>
-                    <input value={emailConfig.subject} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none" />
+                    <input value={emailConfig?.subject || ''} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corpo da Mensagem (Utilize: {'{nome}'}, {'{data_fatal}'})</label>
-                    <textarea value={emailConfig.template} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none h-32 resize-none" />
+                    <textarea value={emailConfig?.template || ''} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none h-32 resize-none" />
                   </div>
                   <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center space-x-3">
                     <Info size={16} className="text-indigo-600 shrink-0" />
