@@ -2,41 +2,31 @@
 import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOfDay, isValid } from 'date-fns';
 import { Vacancy, Occupation, ContractStatus } from './types';
 
-/**
- * Gera um ID único aleatório.
- */
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
-/**
- * Remove acentuação e caracteres especiais de uma string.
- */
 export const removeAccents = (str: string): string => {
   if (!str) return '';
   return str
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-    .replace(/[^\x00-\x7F]/g, ''); // Remove qualquer outro caractere não-ASCII
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x00-\x7F]/g, '');
 };
 
-/**
- * Transforma o CPF no formato mascarado solicitado: ***.XXX.XXX-**
- * Agora reconstrói zeros à esquerda caso tenham sido perdidos na importação.
- */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '***.***.***-**';
   
-  // Se já estiver mascarado, retorna como está
-  if (cpf.includes('*') && cpf.split('.').length > 2) return cpf;
-  
+  // Limpa caracteres não numéricos
   let digits = cpf.replace(/\D/g, '');
-  if (digits.length === 0) return '***.***.***-**';
   
-  // Adiciona zeros à esquerda se necessário (comum em Excel/CSV)
+  // Se for um CPF já mascarado (ex: vindo do mock), tenta extrair os números ou mantém
+  if (digits.length === 0) return cpf.includes('*') ? cpf : '***.***.***-**';
+  
+  // Recompõe zeros à esquerda (comum em Excel/CSV)
   if (digits.length < 11) {
     digits = digits.padStart(11, '0');
   }
   
-  // Formato: ***.456.789-** (Oculta os 3 primeiros e os 2 últimos)
+  // Formato: ***.456.789-** (Oculta os 3 primeiros e os 2 últimos conforme solicitado)
   return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
 };
 
@@ -75,9 +65,6 @@ export const calculateProjectedEndDate = (startDate: string, remainingDays: numb
   return format(addDays(parseISO(startDate), remainingDays - 1), 'yyyy-MM-dd');
 };
 
-/**
- * Sugere uma data de término inicial (geralmente 1 ano após o início).
- */
 export const suggestInitialEndDate = (startDate: string): string => {
   if (!startDate) return '';
   try {
@@ -87,9 +74,6 @@ export const suggestInitialEndDate = (startDate: string): string => {
   }
 };
 
-/**
- * Calcula informações de alertas contratuais (90 dias).
- */
 export const getWarningInfo = (occ: Occupation) => {
   const today = startOfDay(new Date());
   if (!occ.endDate || occ.status === ContractStatus.ENDED) {
