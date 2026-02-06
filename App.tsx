@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
 // ============================================================================
-// ⚠️ CREDENCIAIS SUPABASE (CONECTADAS AO SCHEMA ATUALIZADO v2.2)
+// ⚠️ CREDENCIAIS SUPABASE (CONECTADAS AO SCHEMA ATUALIZADO v2.3)
 // ============================================================================
 const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
@@ -142,7 +142,11 @@ const App: React.FC = () => {
         setUnits(safeArr(data.units));
         setProfiles(safeArr(data.profiles));
         setConvocations(safeArr(data.convocations));
-        setPssList(safeArr(data.pss_list).length ? data.pss_list : INITIAL_PSS);
+        
+        // Sincronia de PSS List (snake_case -> camelCase)
+        const remotePss = safeArr(data.pss_list);
+        setPssList(remotePss.length ? remotePss : INITIAL_PSS);
+        
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
