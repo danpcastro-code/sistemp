@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Vacancy, VacancyStatus, ContractStatus, Occupation, LegalParameter, ConvokedPerson, ConvocationStatus, UserRole, PSS } from '../types';
-import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString } from '../utils';
+import { generateId, calculateProjectedEndDate, suggestInitialEndDate, getSlotRemainingDays, formatDisplayDate, normalizeString, removeAccents } from '../utils';
 import { 
   Search, Plus, ChevronRight, Building2, Clock, FastForward, Trash2, MapPin, X, FilterX, List, Calendar, AlertCircle, Info, FileText, Layers, CheckCircle
 } from 'lucide-react';
@@ -60,20 +60,14 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     });
   }, [pssList]);
 
-  // Filtra candidatos elegíveis para contratação
   const sortedPendingCandidates = useMemo(() => {
     if (!selectedVacancy) return [];
     const vacancyTypeNormalized = normalizeString(selectedVacancy.type);
 
     return convocations
       .filter(c => {
-          // Só permite candidatos com nomeação PENDENTE
           if (c.status !== ConvocationStatus.PENDING) return false;
-          
-          // Verifica se o candidato é do PSS vinculado
           if (selectedVacancy.pssId && c.pssId !== selectedVacancy.pssId) return false;
-
-          // Validação de Perfil Profissional
           const candidateProfileNormalized = normalizeString(c.profile || "");
           return candidateProfileNormalized === vacancyTypeNormalized || 
                  candidateProfileNormalized.includes(vacancyTypeNormalized) || 
@@ -106,13 +100,13 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
 
     const newVacancy: Vacancy = {
       id: generateId(),
-      code: formData.get('code') as string,
+      code: removeAccents(formData.get('code') as string).toUpperCase(),
       legalBase: selectedParam.label,
       maxTermDays: selectedParam.days,
-      type: formData.get('type') as string,
-      agency: formData.get('agency') as string,
-      unit: formData.get('unit') as string,
-      publicNotice: formData.get('publicNotice') as string,
+      type: removeAccents(formData.get('type') as string).toUpperCase(),
+      agency: removeAccents(formData.get('agency') as string).toUpperCase(),
+      unit: removeAccents(formData.get('unit') as string).toUpperCase(),
+      publicNotice: removeAccents(formData.get('publicNotice') as string).toUpperCase(),
       initialQuantity: Number(formData.get('quantity')),
       status: VacancyStatus.NOT_PROVIDED,
       creationDate: new Date().toISOString().split('T')[0],
@@ -122,7 +116,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     
     setVacancies(prev => [...prev, newVacancy]);
     setShowAddModal(false);
-    onLog('CRIAR_VAGA', `Grupo ${newVacancy.code} criado vinculado ao PSS.`);
+    onLog('CRIAR_VAGA', `Grupo ${newVacancy.code} criado (sem acentos).`);
   };
 
   const handleAddContract = (e: React.FormEvent) => {
@@ -158,7 +152,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
     };
 
     setConvocations(prev => prev.map(p => p.id === person.id ? { ...p, status: ConvocationStatus.HIRED } : p));
-    
     setVacancies(prev => prev.map(v => v.id === selectedVacancy.id ? { 
       ...v, 
       status: VacancyStatus.PROVIDED, 
@@ -191,7 +184,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
       occupations: v.occupations.map(o => o.id === extendingOccId ? {
         ...o,
         endDate: extNewEndDate,
-        amendmentTerm: extAmendmentTerm,
+        amendmentTerm: removeAccents(extAmendmentTerm).toUpperCase(),
         isExtensionRequired: extNewEndDate < o.projectedFinalDate
       } : o)
     } : v));
@@ -208,7 +201,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         ...o,
         endDate: rescindDate,
         status: ContractStatus.ENDED,
-        terminationReason: 'Rescisão Antecipada'
+        terminationReason: 'Rescisao Antecipada'
       } : o)
     } : v));
     setShowRescindModal(false);
@@ -216,8 +209,8 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
   };
 
   const filteredVacancies = vacancies.filter(v => 
-    v.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    v.agency.toLowerCase().includes(searchTerm.toLowerCase())
+    removeAccents(v.code.toLowerCase()).includes(removeAccents(searchTerm.toLowerCase())) || 
+    removeAccents(v.agency.toLowerCase()).includes(removeAccents(searchTerm.toLowerCase()))
   );
 
   const displayedOccupations = useMemo(() => {
@@ -229,13 +222,10 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
 
   const handleSlotClick = (idx: number) => {
     if (!selectedVacancy) return;
-    
     const isAlreadyFiltered = selectedSlotFilter === idx;
     setSelectedSlotFilter(isAlreadyFiltered ? null : idx);
-
     const activeOcc = selectedVacancy.occupations.find(o => o.slotIndex === idx && o.status === ContractStatus.ACTIVE);
     const remDays = getSlotRemainingDays(selectedVacancy, idx);
-    
     if (!activeOcc && canEdit && remDays > 0) {
       const hist = selectedVacancy.occupations.filter(o => o.slotIndex === idx);
       const last = hist.length > 0 ? [...hist].sort((a,b) => b.order - a.order)[0] : null;
@@ -392,7 +382,6 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         </div>
       )}
 
-      {/* MODAL: PROVIMENTO (CONTRATAR) */}
       {showAddContractModal && targetSlotInfo && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] max-w-sm w-full p-12 shadow-2xl animate-in zoom-in duration-200 border border-slate-100 relative">
@@ -416,7 +405,7 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Início</label>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Inicio</label>
                    <input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
                 </div>
                 <div>
@@ -433,7 +422,101 @@ const VacancyManagement: React.FC<VacancyManagementProps> = ({ vacancies, setVac
         </div>
       )}
 
-      {/* OUTROS MODAIS MANTIDOS... */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-md w-full p-12 shadow-2xl relative animate-in zoom-in duration-200 border border-slate-100">
+            <button onClick={() => setShowAddModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 p-2"><X size={20}/></button>
+            <h2 className="text-3xl font-black mb-8 text-slate-800 uppercase tracking-tighter">Novo Grupo de Vagas</h2>
+            <form onSubmit={handleSaveVacancy} className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código do Grupo</label>
+                  <input name="code" required placeholder="Ex: VAG-TEM-01" className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quantidade de Postos</label>
+                  <input name="quantity" type="number" min="1" required placeholder="1" className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">PSS de Origem (Vinculo Obrigatório)</label>
+                <select name="pssId" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                  <option value="">Selecione o edital...</option>
+                  {validPssOptions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Perfil Profissional</label>
+                <select name="type" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                  <option value="">Selecione o perfil...</option>
+                  {profiles.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amparo Legal</label>
+                <select name="legalBase" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                  <option value="">Selecione o amparo...</option>
+                  {parameters.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.label} ({p.days} dias)</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Órgão</label>
+                  <select name="agency" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                    <option value="">Selecione o órgão...</option>
+                    {agencies.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unidade</label>
+                  <select name="unit" required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none">
+                    <option value="">Selecione a unidade...</option>
+                    {units.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-xs uppercase rounded-2xl shadow-xl mt-4 active:scale-95">Salvar Novo Grupo</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showExtendModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl border border-slate-100 animate-in zoom-in duration-200 relative">
+            <button onClick={() => setShowExtendModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter">Prorrogar Contrato</h2>
+            <form onSubmit={handleExtendContract} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ato/Termo Aditivo</label>
+                <input value={extAmendmentTerm} onChange={e => setExtAmendmentTerm(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Ex: TA 01/2024" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Novo Termino</label>
+                <input type="date" value={extNewEndDate} onChange={e => setExtNewEndDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              </div>
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 transition-all">Confirmar Prorrogação</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showRescindModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] max-w-sm w-full p-10 shadow-2xl border border-slate-100 animate-in zoom-in duration-200 relative">
+            <button onClick={() => setShowRescindModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <h2 className="text-2xl font-black mb-2 text-slate-800 uppercase tracking-tighter text-red-600">Rescindir Contrato</h2>
+            <form onSubmit={handleRescindContract} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data da Rescisão</label>
+                <input type="date" value={rescindDate} onChange={e => setRescindDate(e.target.value)} required className="mt-2 w-full border border-slate-200 rounded-2xl p-4 text-sm font-bold bg-slate-50 outline-none" />
+              </div>
+              <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">Atenção: Esta ação encerrará o contrato no histórico do posto e liberará o saldo de dias para uma nova ocupação.</p>
+              <button type="submit" className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase rounded-2xl shadow-xl mt-4 active:scale-95 transition-all">Confirmar Rescisão</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
