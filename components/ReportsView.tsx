@@ -45,9 +45,10 @@ const ReportsView: React.FC<ReportsViewProps> = ({ vacancies, convocations }) =>
     });
 
     if (!searchTerm) return flatData;
+    const lowSearch = searchTerm.toLowerCase();
     return flatData.filter(d => 
-      d.occupation.contractedName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.vacancy.code.toLowerCase().includes(searchTerm.toLowerCase())
+      d.occupation.contractedName.toLowerCase().includes(lowSearch) ||
+      d.vacancy.code.toLowerCase().includes(lowSearch)
     );
   }, [selectedNotice, selectedUnit, selectedCargo, searchTerm, vacancies, convocations]);
 
@@ -67,6 +68,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ vacancies, convocations }) =>
       d.occupation.status
     ]);
     
+    // O \ufeff é vital para o Excel entender UTF-8 com acentos
     const content = [headers, ...rows].map(e => e.join(";")).join("\n");
     const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -74,6 +76,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ vacancies, convocations }) =>
     link.setAttribute("href", url);
     link.setAttribute("download", `audit_report_sistemp_${format(new Date(), 'dd-MM-yyyy')}.csv`);
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
