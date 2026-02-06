@@ -13,12 +13,18 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-// ==========================================================
-// CONFIGURAÇÃO SUPABASE (PASSO 3 DO GUIA)
-// Substitua os valores abaixo pelos obtidos em Settings > API
-// ==========================================================
-const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co";
+// ============================================================================
+// ⚠️ ÁREA DE CONFIGURAÇÃO DO BANCO DE DADOS (SUPABASE)
+// ============================================================================
+// 1. No Supabase, vá em Settings > API
+// 2. Copie o "Project URL" e cole abaixo no lugar da URL atual
+// 3. Copie a "anon public" Key e cole abaixo no lugar da chave atual
+// ============================================================================
+
+const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
+
+// ============================================================================
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -107,16 +113,21 @@ const App: React.FC = () => {
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('sistemp_data').upsert(payload, { onConflict: 'id' });
+      const { error } = await supabase.from('sistemp_data').upsert(payload);
+      
       if (!error) {
           isDirty.current = false;
           setCloudStatus('connected');
+          setCloudErrorMessage(null);
       } else {
+          console.error("Supabase Error:", error);
           setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
-          setCloudErrorMessage(error.message);
+          setCloudErrorMessage(`${error.code}: ${error.message}`);
       }
     } catch (e: any) {
+      console.error("Cloud Save Exception:", e);
       setCloudStatus('error');
+      setCloudErrorMessage(e.message || "Erro desconhecido na comunicação com a nuvem.");
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
@@ -137,12 +148,18 @@ const App: React.FC = () => {
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
         setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
+        setCloudStatus('connected');
+      } else if (error) {
+         setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
+         setCloudErrorMessage(error.message);
+      } else {
+        setCloudStatus('connected');
       }
-      setCloudStatus('connected');
       isInitialLoadDone.current = true;
       setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
-    } catch (e) {
+    } catch (e: any) {
       setCloudStatus('error');
+      setCloudErrorMessage(e.message);
       isInitialLoadDone.current = true;
     }
   }, []);
