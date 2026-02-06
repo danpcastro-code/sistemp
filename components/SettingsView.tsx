@@ -38,7 +38,7 @@ interface ListManagerProps {
   icon: React.ReactNode;
 }
 
-const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items, onAdd, onAction, onToggleStatus, icon }) => {
+const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items = [], onAdd, onAction, onToggleStatus, icon }) => {
   const [inputValue, setInputValue] = useState('');
   
   const handleAdd = () => {
@@ -70,7 +70,7 @@ const ListManager: React.FC<ListManagerProps> = ({ title, subtitle, items, onAdd
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-        {items.map((item) => (
+        {(items || []).map((item) => (
           <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${item.status === 'inactive' ? 'bg-slate-50 opacity-60 border-transparent' : 'bg-white border-slate-100'}`}>
             <span className={`text-[10px] font-bold uppercase truncate max-w-[120px] ${item.status === 'inactive' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
               {item.name}
@@ -104,9 +104,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   units = [], setUnits,
   profiles = [], setProfiles,
   users = [], setUsers,
-  vacancies = [],
-  convocations = [],
-  pssList = [],
   onLog,
   cloudStatus,
   emailConfig,
@@ -124,33 +121,33 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.6
--- 1. Criação/Atualização da Tabela Centralizada
+  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.7
+-- 1. Criação/Atualização da Tabela Mestre
 CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
     parameters jsonb DEFAULT '[]'::jsonb,
-    convocations jsonb DEFAULT '[]'::jsonb,
-    pss_list jsonb DEFAULT '[]'::jsonb, 
-    users jsonb DEFAULT '[]'::jsonb,
     agencies jsonb DEFAULT '[]'::jsonb,
     units jsonb DEFAULT '[]'::jsonb,
     profiles jsonb DEFAULT '[]'::jsonb,
+    convocations jsonb DEFAULT '[]'::jsonb,
+    pss_list jsonb DEFAULT '[]'::jsonb, 
+    users jsonb DEFAULT '[]'::jsonb,
     email_config jsonb DEFAULT '{}'::jsonb,
     logs jsonb DEFAULT '[]'::jsonb,
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Permissões Globais
+-- 2. Permissões Globais (Segurança Desabilitada para Facilidade de Sincronia)
 ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE public.sistemp_data TO anon;
 GRANT ALL ON TABLE public.sistemp_data TO authenticated;
 GRANT ALL ON TABLE public.sistemp_data TO service_role;
 
--- 3. Inicialização de Registro Mestre
+-- 3. Inicialização de Registro Único
 INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
-COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gestão';`;
+COMMENT ON TABLE public.sistemp_data IS 'Central de Dados CTU Gestão v2.7';`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(REPAIR_SQL);
@@ -193,27 +190,46 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gest�
 
       {activeSubTab === 'cloud' && (
         <div className="space-y-6 animate-in fade-in">
+            {/* ZONA DE PERIGO - MOVIDA PARA O TOPO E REFORÇADA */}
+            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-200 shadow-lg">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center space-x-5">
+                  <div className="p-5 bg-red-600 text-white rounded-[1.5rem] shadow-xl"><Bomb size={32}/></div>
+                  <div>
+                    <h3 className="text-lg font-black text-red-800 uppercase tracking-tighter">Limpeza Total do Sistema</h3>
+                    <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest leading-relaxed max-w-sm">Esta ação é irreversível. Apaga todos os contratos, vagas e configurações da nuvem.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    const pwd = window.prompt("⚠️ CUIDADO: Todos os dados serão perdidos!\nDigite a SENHA MESTRA para confirmar:");
+                    if (pwd === "1!Leinad") onRestoreAll();
+                    else if (pwd !== null) alert("Senha inválida.");
+                  }} 
+                  className="px-10 py-5 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-red-700 transition-all border border-red-500 active:scale-95"
+                >
+                  Confirmar Reset Master
+                </button>
+              </div>
+            </div>
+
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Nuvem</h3>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Status de Conexão</h3>
                 {cloudStatus === 'connected' ? (
                    <div className="p-8 bg-green-50 rounded-[2rem] border border-green-200 flex items-center justify-between">
                       <div className="flex items-center space-x-4">
                         <div className="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24}/></div>
                         <div>
                           <p className="text-xs font-black text-slate-800 uppercase">Sincronização Ativa</p>
-                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">SISTEMA INTEGRADO AO SUPABASE</p>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">SISTEMA CONECTADO AO SUPABASE</p>
                         </div>
                       </div>
-                      <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Online</span>
                    </div>
                 ) : (
                   <div className="p-8 bg-amber-50 rounded-[2rem] border border-amber-200 flex items-center justify-between animate-pulse">
                       <div className="flex items-center space-x-4">
                         <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><RefreshCw size={24} className="animate-spin" /></div>
-                        <div>
-                          <p className="text-xs font-black text-slate-800 uppercase">Processando...</p>
-                          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">Status: {cloudStatus}</p>
-                        </div>
+                        <div><p className="text-xs font-black text-slate-800 uppercase tracking-widest">Aguardando Nuvem...</p></div>
                       </div>
                   </div>
                 )}
@@ -221,36 +237,12 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gest�
 
             <div className="bg-white p-10 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm relative overflow-hidden">
                 <div className="flex items-center space-x-3 mb-4">
-                    <DatabaseZap className="text-indigo-600" size={28}/><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL de Reparo Supabase</h3>
+                    <DatabaseZap className="text-indigo-600" size={28}/><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL v2.7</h3>
                 </div>
                 <div className="bg-slate-900 rounded-[1.5rem] p-6 relative group border border-slate-800">
                     <button onClick={handleCopySql} className="absolute top-4 right-4 px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl">{copied ? 'Copiado!' : 'Copiar Script SQL'}</button>
                     <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">{REPAIR_SQL}</pre>
                 </div>
-                <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center"><Info size={12} className="mr-2"/> Utilize este script caso ocorra erro 42P01 ou perda de tabelas.</p>
-            </div>
-
-            {/* ZONA DE PERIGO - BOTÃO ZERAR SISTEMA RESTAURADO */}
-            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-100 shadow-sm mt-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="p-4 bg-red-600 text-white rounded-2xl shadow-lg"><Bomb size={24}/></div>
-                  <div>
-                    <h3 className="text-sm font-black text-red-800 uppercase tracking-tighter">Zona de Perigo: Master Reset</h3>
-                    <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest leading-relaxed max-w-sm">Esta ação apaga permanentemente todos os registros (vagas, contratos, operadores) e restaura os padrões de fábrica.</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => {
-                    const pwd = window.prompt("⚠️ AÇÃO IRREVERSÍVEL\nDigite a SENHA MESTRA para confirmar a limpeza total de dados:");
-                    if (pwd === "1!Leinad") onRestoreAll();
-                    else if (pwd !== null) alert("Senha incorreta. Acesso negado.");
-                  }} 
-                  className="px-8 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all border border-red-500 flex items-center active:scale-95"
-                >
-                  <RefreshCw size={14} className="mr-2" /> Zerar Todo o Sistema
-                </button>
-              </div>
             </div>
         </div>
       )}
@@ -261,12 +253,12 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gest�
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center">
                 <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl mr-3"><Scale size={20}/></div>
-                <div><h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Prazos Legais (Sem Acentos)</h3><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Base de cálculo para vencimentos</p></div>
+                <div><h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Prazos de Vigência</h3><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Parametros de calculo da Lei 8.745</p></div>
               </div>
               <button onClick={() => setShowParamModal(true)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-blue-700 transition-all flex items-center"><Plus size={14} className="mr-1.5"/> Novo Prazo</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {parameters.filter(p => p && p.label).map((p) => (
+              {(parameters || []).filter(p => p && p.label).map((p) => (
                 <div key={p.id} className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-blue-200 transition-all flex items-center justify-between group">
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{p.lawRef || 'Lei 8.745'}</p>
@@ -286,37 +278,34 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gest�
         </div>
       )}
 
-      {/* TELA DE OPERADORES - CORRIGIDA */}
       {activeSubTab === 'users' && (
         <div className="space-y-6 animate-in fade-in">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center mb-8">
+          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[400px]">
+            <div className="flex justify-between items-center mb-10">
               <div className="flex items-center">
-                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl mr-3"><UsersIcon size={20}/></div>
-                <div><h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Operadores do Sistema</h3><p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Gestão de permissões e acessos</p></div>
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mr-4"><UsersIcon size={24}/></div>
+                <div><h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Operadores de Acesso</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Controle de quem pode editar o sistema</p></div>
               </div>
-              <button onClick={() => setShowUserModal(true)} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-indigo-700 transition-all flex items-center"><UserPlus size={14} className="mr-1.5"/> Novo Operador</button>
+              <button onClick={() => setShowUserModal(true)} className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center"><UserPlus size={16} className="mr-2"/> Adicionar Operador</button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {users.map((u) => (
-                <div key={u.id} className="p-6 rounded-[2rem] border border-slate-100 bg-slate-50 flex items-center justify-between group">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {(users || []).map((u) => (
+                <div key={u.id} className="p-6 rounded-[2rem] border border-slate-100 bg-slate-50 flex items-center justify-between group hover:border-indigo-200 transition-all">
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-100">
-                      <KeyRound size={20} />
+                      <KeyRound size={24} />
                     </div>
                     <div>
-                      <p className="text-xs font-black text-slate-800 uppercase truncate max-w-[120px]">{u.name}</p>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">ID: {u.username}</p>
-                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase border mt-1 inline-block ${u.role === UserRole.ADMIN ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
-                        {u.role}
+                      <p className="text-sm font-black text-slate-800 uppercase">{u.name}</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">LOGIN: {u.username}</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase border mt-2 inline-block ${u.role === UserRole.ADMIN ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-200' : 'bg-white text-slate-500 border-slate-200'}`}>
+                        {u.role === UserRole.ADMIN ? 'Administrador' : 'Gestor RH'}
                       </span>
                     </div>
                   </div>
                   {u.username !== 'admin' && (
-                    <button onClick={() => setUsers(prev => prev.filter(item => item.id !== u.id))} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100">
-                      <Trash2 size={16}/>
-                    </button>
+                    <button onClick={() => setUsers(prev => prev.filter(item => item.id !== u.id))} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button>
                   )}
                 </div>
               ))}
@@ -325,51 +314,46 @@ COMMENT ON TABLE public.sistemp_data IS 'Base de Dados Integral v2.6 - CTU Gest�
         </div>
       )}
 
-      {/* TELA DE NOTIFICAÇÕES - CORRIGIDA */}
       {activeSubTab === 'email' && (
         <div className="space-y-6 animate-in fade-in">
           <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
             <div className="flex items-center mb-10">
               <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mr-4"><Mail size={24}/></div>
               <div>
-                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Configuração de Alertas</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Integração via EmailJS para notificações de vencimento</p>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Configurações de Alerta</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Integração com EmailJS para disparos automáticos</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
               <div className="space-y-6">
-                <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center"><Terminal size={14} className="mr-2 text-indigo-600"/> Credenciais de Serviço</h4>
-                <div className="space-y-4">
+                <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center border-b border-slate-100 pb-2"><Terminal size={14} className="mr-2 text-indigo-600"/> Credenciais do Provedor</h4>
+                <div className="space-y-5">
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Service ID</label>
-                    <input value={emailConfig?.serviceId || ''} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="service_xxxxxx" />
+                    <input value={emailConfig?.serviceId || ''} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} className="w-full mt-2 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Ex: service_rjs9xxx" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Template ID</label>
-                    <input value={emailConfig?.templateId || ''} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="template_xxxxxx" />
+                    <input value={emailConfig?.templateId || ''} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} className="w-full mt-2 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Ex: template_u8mpxxx" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Public Key</label>
-                    <input value={emailConfig?.publicKey || ''} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="user_xxxxxx" />
+                    <input value={emailConfig?.publicKey || ''} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} className="w-full mt-2 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Ex: user_0k2pxxx" />
                   </div>
                 </div>
               </div>
 
               <div className="space-y-6">
-                <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center"><Mail size={14} className="mr-2 text-indigo-600"/> Modelo da Mensagem</h4>
-                <div className="space-y-4">
+                <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center border-b border-slate-100 pb-2"><Mail size={14} className="mr-2 text-indigo-600"/> Modelo do Alerta</h4>
+                <div className="space-y-5">
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assunto do E-mail</label>
-                    <input value={emailConfig?.subject || ''} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none" />
+                    <input value={emailConfig?.subject || ''} onChange={e => setEmailConfig({...emailConfig, subject: e.target.value})} className="w-full mt-2 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none" />
                   </div>
                   <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corpo da Mensagem (Utilize: {'{nome}'}, {'{data_fatal}'})</label>
-                    <textarea value={emailConfig?.template || ''} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full mt-1.5 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none h-32 resize-none" />
-                  </div>
-                  <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center space-x-3">
-                    <Info size={16} className="text-indigo-600 shrink-0" />
-                    <p className="text-[9px] text-indigo-700 font-bold uppercase leading-relaxed tracking-widest">Os parâmetros entre chaves serão substituídos automaticamente pelos dados do contrato em alerta.</p>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corpo da Mensagem (Dinamico)</label>
+                    <textarea value={emailConfig?.template || ''} onChange={e => setEmailConfig({...emailConfig, template: e.target.value})} className="w-full mt-2 border border-slate-200 rounded-2xl p-4 text-xs font-bold bg-slate-50 outline-none h-40 resize-none" />
                   </div>
                 </div>
               </div>
