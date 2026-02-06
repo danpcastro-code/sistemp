@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
 // ============================================================================
-// ⚠️ CREDENCIAIS ATUALIZADAS DO BANCO DE DADOS (SUPABASE)
+// ⚠️ CREDENCIAIS SUPABASE (CONECTADAS AO SCHEMA ATUALIZADO)
 // ============================================================================
 const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
@@ -77,8 +77,8 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
-  // FUNÇÃO DE RESET TOTAL (Zerar Base de Dados)
   const handleMasterReset = () => {
+    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados inseridos serão apagados. Deseja continuar?")) return;
     setVacancies([]);
     setConvocations([]);
     setPssList([]);
@@ -88,26 +88,9 @@ const App: React.FC = () => {
     setUsers(DEFAULT_USERS);
     setLogs([]);
     setEmailConfig(DEFAULT_EMAIL_CONFIG);
-    setParameters(INITIAL_PARAMETERS); // Preserva leis básicas
-    
+    setParameters(INITIAL_PARAMETERS);
     isDirty.current = true;
-    addLog('SISTEMA', 'RESTAURAÇÃO COMPLETA: Base de dados limpa via senha mestra.');
-    
-    // Força gravação imediata para limpar a nuvem também
     setTimeout(() => saveToCloud(), 500);
-    alert("Sistema restaurado com sucesso. Todos os dados inseridos manualmente foram apagados.");
-  };
-
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    addLog('LOGIN', `Acesso do operador: ${user.username}`);
-  };
-
-  const handleLogout = () => {
-    addLog('LOGOUT', `Saída do operador: ${currentUser?.username}`);
-    localStorage.removeItem(SESSION_KEY);
-    setCurrentUser(null);
   };
 
   const saveToCloud = useCallback(async () => {
@@ -188,14 +171,12 @@ const App: React.FC = () => {
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
-  if (!currentUser) {
-    return <LoginView users={users} onLogin={handleLogin} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
-  }
+  if (!currentUser) return <LoginView users={users} onLogin={user => { setCurrentUser(user); localStorage.setItem(SESSION_KEY, JSON.stringify(user)); }} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
 
   return (
     <Layout 
       activeTab={activeTab} setActiveTab={setActiveTab} userRole={currentUser.role} userName={currentUser.name} 
-      onLogout={handleLogout} cloudStatus={cloudStatus} onSync={() => { isDirty.current = true; saveToCloud(); }}
+      onLogout={() => { localStorage.removeItem(SESSION_KEY); setCurrentUser(null); }} cloudStatus={cloudStatus} onSync={() => { isDirty.current = true; saveToCloud(); }}
     >
       {activeTab === 'dashboard' && <DashboardView vacancies={vacancies} setVacancies={setVacancies} convocations={convocations} pssList={pssList} onLog={addLog} emailConfig={emailConfig} />}
       {activeTab === 'vacancies' && <VacancyManagement vacancies={vacancies} setVacancies={setVacancies} parameters={parameters} agencies={agencies.filter(a => a.status === 'active').map(a => a.name)} units={units.filter(u => u.status === 'active').map(u => u.name)} profiles={profiles.filter(p => p.status === 'active').map(p => p.name)} setAgencies={() => {}} setUnits={() => {}} convocations={convocations} setConvocations={setConvocations} pssList={pssList} userRole={currentUser.role} onLog={addLog} />}
