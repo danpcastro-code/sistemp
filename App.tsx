@@ -134,9 +134,9 @@ const App: React.FC = () => {
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
         setVacancies(safeArr(data.vacancies));
         setParameters(safeArr(data.parameters));
-        setAgencies(safeArr(data.agencies));
-        setUnits(safeArr(data.units));
-        setProfiles(safeArr(data.profiles));
+        setAgencies(safeArr(data.agencies).length ? data.agencies : [{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
+        setUnits(safeArr(data.units).length ? data.units : [{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
+        setProfiles(safeArr(data.profiles).length ? data.profiles : [{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
         setConvocations(safeArr(data.convocations));
         
         // Sincronia de PSS List
