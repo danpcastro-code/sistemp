@@ -3,31 +3,31 @@ import { differenceInDays, parseISO, addDays, format, addYears, subDays, startOf
 import { Vacancy, Occupation, ContractStatus } from './types';
 
 /**
+ * Remove acentuação e caracteres especiais de uma string.
+ */
+export const removeAccents = (str: string): string => {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[^\x00-\x7F]/g, ''); // Remove qualquer outro caractere não-ASCII (limpeza profunda)
+};
+
+/**
  * Aplica máscara de proteção ao CPF: ***.XXX.XXX-**
- * Garante que apenas os blocos centrais sejam visíveis.
  */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '';
-  // Remove tudo que não for dígito
   const digits = cpf.replace(/\D/g, '');
-  
-  // Se não tiver pelo menos os 11 dígitos padrão, retorna apenas um placeholder de erro/proteção
   if (digits.length < 11) return '***.***.***-**';
-  
-  // Extrai os blocos: 123 (oculto) . 456 (visível) . 789 (visível) - 00 (oculto)
   const part1 = digits.substring(3, 6);
   const part2 = digits.substring(6, 9);
-  
   return `***.${part1}.${part2}-**`;
 };
 
 export const normalizeString = (str: string): string => {
   if (!str) return '';
-  return str
-    .toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, ''); // Remove acentos
+  return removeAccents(str).toLowerCase().trim();
 };
 
 export const formatDisplayDate = (dateStr: string): string => {
