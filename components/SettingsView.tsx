@@ -130,10 +130,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- REPARO DEFINITIVO CTU GESTÃO (COPIE E COLE NO SQL EDITOR DO SUPABASE)
+  const REPAIR_SQL = `-- SCRIPT DE REPARO MASTER - CTU GESTÃO
+-- EXECUTE ESTE SCRIPT NO "SQL EDITOR" DO SUPABASE PARA CORRIGIR ERROS DE GRAVAÇÃO
 
--- 1. Cria a tabela mestre com estrutura JSONB completa
-CREATE TABLE IF NOT EXISTS sistemp_data (
+-- 1. Garante a existência da tabela com a estrutura correta
+CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
     parameters jsonb DEFAULT '[]'::jsonb,
@@ -148,24 +149,28 @@ CREATE TABLE IF NOT EXISTS sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. GARANTE que todas as colunas de parametrização existam (migração de versões antigas)
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS email_config jsonb DEFAULT '{}'::jsonb;
-ALTER TABLE sistemp_data ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '[]'::jsonb;
+-- 2. Atualiza colunas caso a tabela seja de uma versão muito antiga
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS email_config jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '[]'::jsonb;
 
--- 3. Concede permissão total para a API anônima e autenticada
-GRANT USAGE ON SCHEMA public TO anon;
-GRANT ALL ON TABLE sistemp_data TO anon;
-GRANT ALL ON TABLE sistemp_data TO authenticated;
+-- 3. DESATIVA O BLOQUEIO DE SEGURANÇA (RLS)
+-- Isso permite que a chave anon_public grave dados diretamente.
+ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
 
--- 4. DESABILITA RLS (CRÍTICO: Permite que o App grave usando a chave anon public sem políticas complexas)
-ALTER TABLE sistemp_data DISABLE ROW LEVEL SECURITY;
+-- 4. CONCEDE PERMISSÕES TOTAIS PARA AS CHAVES DE API
+GRANT ALL ON TABLE public.sistemp_data TO anon;
+GRANT ALL ON TABLE public.sistemp_data TO authenticated;
+GRANT ALL ON TABLE public.sistemp_data TO service_role;
+GRANT ALL ON TABLE public.sistemp_data TO postgres;
 
--- 5. Garante que a linha de dados id=1 exista para o comando upsert do App.tsx
-INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
+-- 5. Garante que o registro central ID=1 exista
+INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- FIM DO SCRIPT`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(REPAIR_SQL);
@@ -211,21 +216,37 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
 
       {activeSubTab === 'cloud' && (
         <div className="space-y-6 animate-in fade-in">
-            {/* ESTADO DA CONEXÃO */}
+            {/* ESTADO DA CONEXÃO COM DIAGNÓSTICO */}
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6"><Activity className="mr-2 text-indigo-600" size={18}/> Estado da Nuvem</h3>
                 
                 {cloudStatus === 'setup_required' || cloudStatus === 'error' ? (
-                  <div className="p-8 bg-red-50 border-2 border-red-500 rounded-[2rem] flex flex-col md:flex-row items-center gap-6 animate-in zoom-in">
-                      <div className="p-4 bg-red-600 text-white rounded-[1.5rem] shadow-xl animate-bounce">
-                          <ShieldAlert size={32} />
+                  <div className="p-8 bg-red-50 border-2 border-red-500 rounded-[2rem] flex flex-col items-center gap-6 animate-in zoom-in">
+                      <div className="flex items-center gap-6 w-full">
+                        <div className="p-4 bg-red-600 text-white rounded-[1.5rem] shadow-xl">
+                            <ShieldAlert size={32} />
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="text-lg font-black text-red-800 uppercase tracking-tighter">
+                                {cloudStatus === 'setup_required' ? 'Tabela Não Encontrada' : 'Falha Crítica na Gravação'}
+                            </h4>
+                            <p className="text-xs text-red-700 font-bold leading-relaxed mt-2">
+                               {cloudStatus === 'setup_required' 
+                                 ? 'A tabela "sistemp_data" não foi criada no seu projeto Supabase.' 
+                                 : 'O banco de dados recusou a gravação. Isso ocorre quando o RLS está ativado ou as permissões estão incorretas.'}
+                            </p>
+                        </div>
                       </div>
-                      <div className="flex-1 text-center md:text-left">
-                          <h4 className="text-lg font-black text-red-800 uppercase tracking-tighter">Erro de Gravação Detectado</h4>
-                          <p className="text-xs text-red-700 font-bold leading-relaxed mt-2">
-                             O sistema não conseguiu gravar os dados. Provavelmente a tabela no Supabase é antiga ou não existe. 
-                             Copie o script SQL abaixo e execute no painel do Supabase para destravar.
-                          </p>
+                      
+                      {cloudErrorMessage && (
+                        <div className="w-full bg-red-900/10 p-4 rounded-xl font-mono text-[10px] text-red-800 border border-red-200 break-all">
+                            <strong>Erro Técnico:</strong> {cloudErrorMessage}
+                        </div>
+                      )}
+
+                      <div className="w-full p-4 bg-white rounded-xl border border-red-200">
+                          <p className="text-[10px] font-black text-slate-700 uppercase mb-2">Solução Imediata:</p>
+                          <p className="text-[10px] text-slate-500 font-medium">Copie o Script SQL abaixo, vá no seu painel do Supabase, entre em <strong>SQL Editor</strong>, cole e clique em <strong>RUN</strong>.</p>
                       </div>
                   </div>
                 ) : (
@@ -235,8 +256,8 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
                           <Check size={24}/>
                         </div>
                         <div>
-                          <p className="text-xs font-black text-slate-800 uppercase">Sistema Operacional</p>
-                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">Conexão Estabelecida com Supabase</p>
+                          <p className="text-xs font-black text-slate-800 uppercase">Sistema Sincronizado</p>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mt-1">Dados protegidos na nuvem</p>
                         </div>
                       </div>
                       <span className="px-4 py-2 bg-white text-green-600 border border-green-100 rounded-xl text-[10px] font-black uppercase tracking-widest animate-pulse shadow-sm">Cloud Ativa</span>
@@ -244,82 +265,27 @@ INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`;
                 )}
             </div>
 
-            {/* GUIA PASSO A PASSO */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6">
-                        <SettingsIcon className="mr-2 text-blue-600" size={18}/> 1. Configurar Projeto
-                    </h3>
-                    <ol className="space-y-4">
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">1</span>
-                            <p className="text-xs text-slate-600 font-medium">Crie um projeto em <a href="https://supabase.com" target="_blank" className="text-blue-600 font-bold underline">supabase.com</a></p>
-                        </li>
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">2</span>
-                            <p className="text-xs text-slate-600 font-medium">Vá em <strong>Settings > API</strong> e copie a <strong>URL</strong> e a <strong>Anon Key</strong>.</p>
-                        </li>
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">3</span>
-                            <p className="text-xs text-slate-600 font-medium">Cole no arquivo <code>App.tsx</code> nas constantes <code>SUPABASE_URL</code> e <code>SUPABASE_KEY</code>.</p>
-                        </li>
-                    </ol>
-                </div>
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center mb-6">
-                        <Code2 className="mr-2 text-indigo-600" size={18}/> 2. Preparar Banco
-                    </h3>
-                    <ol className="space-y-4">
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">1</span>
-                            <p className="text-xs text-slate-600 font-medium">No menu lateral do Supabase, clique em <strong>SQL Editor</strong>.</p>
-                        </li>
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">2</span>
-                            <p className="text-xs text-slate-600 font-medium">Clique em <strong>New Query</strong>.</p>
-                        </li>
-                        <li className="flex items-start space-x-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-black shrink-0">3</span>
-                            <p className="text-xs text-slate-600 font-medium">Cole o script abaixo e clique em <strong>RUN</strong>.</p>
-                        </li>
-                    </ol>
-                </div>
-            </div>
-
-            {/* SCRIPT SQL */}
+            {/* SCRIPT SQL REFORÇADO */}
             <div className="bg-white p-10 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
                     <div className="flex items-center space-x-3 mb-4">
                         <DatabaseZap className="text-indigo-600" size={28}/>
-                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL de Reparo</h3>
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Script SQL Corretivo</h3>
                     </div>
                     
                     <div className="bg-slate-900 rounded-[1.5rem] p-6 relative group border border-slate-800">
                         <button onClick={handleCopySql} className="absolute top-4 right-4 px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all border border-indigo-400 active:scale-95 shadow-xl">
                           {copied ? 'Copiado!' : 'Copiar Script SQL'}
                         </button>
-                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">
+                        <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[400px] leading-relaxed py-4 scrollbar-thin">
                             {REPAIR_SQL}
                         </pre>
                     </div>
                 </div>
             </div>
-
-            {cloudErrorMessage && (
-              <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-2xl border-4 border-slate-800">
-                  <div className="flex items-center space-x-4 mb-4">
-                      <Terminal className="text-blue-400" size={32}/>
-                      <h3 className="text-lg font-black uppercase tracking-tighter text-blue-100">Relatório de Erro Técnico</h3>
-                  </div>
-                  <div className="bg-black/30 p-5 rounded-2xl font-mono text-[11px] leading-relaxed break-all border border-white/5 text-blue-200">
-                      {cloudErrorMessage}
-                  </div>
-              </div>
-            )}
         </div>
       )}
 
-      {/* OUTRAS ABAS MANTIDAS (PERFIL, OPERADORES, EMAIL)... */}
       {activeSubTab === 'users' && (
         <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm animate-in fade-in">
           <div className="flex justify-between items-center mb-8">
