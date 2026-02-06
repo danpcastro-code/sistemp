@@ -17,8 +17,8 @@ import { generateId } from './utils';
 // CONFIGURAÇÃO SUPABASE (PASSO 3 DO GUIA)
 // Substitua os valores abaixo pelos obtidos em Settings > API
 // ==========================================================
-const SUPABASE_URL = "https://xsbpynwtlhntnafnmnbs.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzYnB5bnd0bGhudG5hZm5tbmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NDEwMTcsImV4cCI6MjA4NTIxNzAxN30.fSEBLOipxHT7qjNbG66tXxNe9EgfIVavdr53dIncdpQ"; 
+const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
