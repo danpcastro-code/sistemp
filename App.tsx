@@ -164,8 +164,10 @@ const App: React.FC = () => {
 
   useEffect(() => { loadFromCloud(); }, [loadFromCloud]);
 
+  // Observer de mudanças para acionar o isDirty e o salvamento automático
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
+      isDirty.current = true;
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = window.setTimeout(saveToCloud, 2000);
     }
