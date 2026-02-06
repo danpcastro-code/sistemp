@@ -19,15 +19,25 @@ export const removeAccents = (str: string): string => {
 };
 
 /**
- * Transforma e memoriza o CPF no formato mascarado: ***.XXX.XXX-**
+ * Transforma o CPF no formato mascarado solicitado: ***.XXX.XXX-**
+ * Agora reconstrói zeros à esquerda caso tenham sido perdidos na importação.
  */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '***.***.***-**';
-  const digits = cpf.replace(/\D/g, '');
-  if (digits.length === 11) {
-    return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
+  
+  // Se já estiver mascarado, retorna como está
+  if (cpf.includes('*') && cpf.split('.').length > 2) return cpf;
+  
+  let digits = cpf.replace(/\D/g, '');
+  if (digits.length === 0) return '***.***.***-**';
+  
+  // Adiciona zeros à esquerda se necessário (comum em Excel/CSV)
+  if (digits.length < 11) {
+    digits = digits.padStart(11, '0');
   }
-  return '***.***.***-**';
+  
+  // Formato: ***.456.789-** (Oculta os 3 primeiros e os 2 últimos)
+  return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
 };
 
 export const normalizeString = (str: string): string => {
