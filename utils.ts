@@ -14,15 +14,36 @@ export const removeAccents = (str: string): string => {
 };
 
 /**
- * Aplica máscara de proteção ao CPF: ***.XXX.XXX-**
+ * Transforma e memoriza o CPF no formato mascarado: ***.XXX.XXX-**
+ * Independente de como ele entre no sistema, será armazenado assim.
  */
 export const maskCPF = (cpf: string): string => {
-  if (!cpf) return '';
+  if (!cpf) return '***.***.***-**';
+  
+  // Se já estiver mascarado no formato correto, retorna como está
+  if (cpf.startsWith('***') && cpf.includes('.') && cpf.endsWith('**')) {
+    return cpf;
+  }
+
   const digits = cpf.replace(/\D/g, '');
-  if (digits.length < 11) return '***.***.***-**';
-  const part1 = digits.substring(3, 6);
-  const part2 = digits.substring(6, 9);
-  return `***.${part1}.${part2}-**`;
+  
+  // Se for um CPF original completo (11 dígitos)
+  if (digits.length === 11) {
+    const part1 = digits.substring(3, 6);
+    const part2 = digits.substring(6, 9);
+    return `***.${part1}.${part2}-**`;
+  }
+  
+  // Caso entre um CPF parcial ou já com alguma máscara incompleta
+  // Tenta extrair o que for possível ou retorna o placeholder
+  const cleanDigits = digits.substring(0, 6);
+  if (cleanDigits.length >= 3) {
+    const p1 = cleanDigits.substring(0, 3);
+    const p2 = cleanDigits.substring(3, 6) || '***';
+    return `***.${p1}.${p2}-**`;
+  }
+
+  return '***.***.***-**';
 };
 
 export const normalizeString = (str: string): string => {
