@@ -132,20 +132,21 @@ const App: React.FC = () => {
       if (!error && data) {
         isUpdatingFromRemote.current = true;
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
+        
         setVacancies(safeArr(data.vacancies));
-        setParameters(safeArr(data.parameters));
+        setParameters(safeArr(data.parameters).length ? data.parameters : INITIAL_PARAMETERS);
         setAgencies(safeArr(data.agencies).length ? data.agencies : [{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
         setUnits(safeArr(data.units).length ? data.units : [{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
         setProfiles(safeArr(data.profiles).length ? data.profiles : [{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
         setConvocations(safeArr(data.convocations));
         
-        // Sincronia de PSS List
+        // Garantia de PSS List e Email Config mesmo se vierem vazios do banco
         const remotePss = safeArr(data.pss_list);
         setPssList(remotePss.length ? remotePss : INITIAL_PSS);
         
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
-        setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
+        setEmailConfig(data.email_config && Object.keys(data.email_config).length ? data.email_config : DEFAULT_EMAIL_CONFIG);
         setCloudStatus('connected');
       } else if (error) {
          setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error');
