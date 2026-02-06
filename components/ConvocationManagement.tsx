@@ -66,6 +66,19 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     return list.sort((a, b) => a.ranking - b.ranking);
   }, [convocations, selectedPssId, activeSubTab, searchTerm]);
 
+  const downloadCsvTemplate = () => {
+    const headers = ["Nome", "CPF", "Email", "Perfil", "Modalidade", "Ranking"];
+    const exampleRow = ["FULANO DE TAL", "12345678900", "exemplo@email.com", "PROFESSOR SUBSTITUTO", "AC", "1"];
+    const content = "\ufeff" + headers.join(";") + "\n" + exampleRow.join(";");
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "modelo_importacao_pss.csv");
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.length === candidates.length && candidates.length > 0) {
       setSelectedIds([]);
@@ -226,7 +239,10 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {activeSubTab !== 'convoked' && canEdit && (
                     <>
-                      <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200">
+                      <button onClick={downloadCsvTemplate} className="flex items-center px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200">
+                        <Download size={14} className="mr-2" /> Modelo CSV
+                      </button>
+                      <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md">
                         <Upload size={14} className="mr-2" /> Importar CSV
                       </button>
                       <button 
