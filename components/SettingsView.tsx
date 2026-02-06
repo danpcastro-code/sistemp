@@ -125,8 +125,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.HR });
 
-  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.3 (Fevereiro 2024)
--- 1. Criação da Tabela com suporte a JSONB para todos os módulos
+  const REPAIR_SQL = `-- SCRIPT DE REPARO INTEGRAL SUPABASE - CTU GESTÃO v2.4
+-- 1. Criação da Tabela com suporte a JSONB
 CREATE TABLE IF NOT EXISTS public.sistemp_data (
     id bigint PRIMARY KEY,
     vacancies jsonb DEFAULT '[]'::jsonb,
@@ -142,24 +142,23 @@ CREATE TABLE IF NOT EXISTS public.sistemp_data (
     updated_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Garantia de colunas (caso a tabela já exista em versão anterior)
+-- 2. Garantia de colunas JSONB
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS pss_list jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS agencies jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS units jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.sistemp_data ADD COLUMN IF NOT EXISTS profiles jsonb DEFAULT '[]'::jsonb;
 
--- 3. Configuração de Acesso (Segurança)
+-- 3. Configuração de Segurança
 ALTER TABLE public.sistemp_data DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE public.sistemp_data TO anon;
 GRANT ALL ON TABLE public.sistemp_data TO authenticated;
 GRANT ALL ON TABLE public.sistemp_data TO service_role;
 
--- 4. Inicialização do Registro Mestre (ID 1)
+-- 4. Inicialização/Garantia do Registro ID 1
 INSERT INTO public.sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
-COMMENT ON TABLE public.sistemp_data IS 'Armazenamento centralizado de estado do CTU Gestão';
-COMMENT ON COLUMN public.sistemp_data.pss_list IS 'Lista de Editais PSS e candidatos vinculados';`;
+COMMENT ON TABLE public.sistemp_data IS 'Armazenamento centralizado v2.4';`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(REPAIR_SQL);
@@ -243,24 +242,6 @@ COMMENT ON COLUMN public.sistemp_data.pss_list IS 'Lista de Editais PSS e candid
                     <pre className="text-[11px] text-blue-300 font-mono overflow-x-auto max-h-[300px] leading-relaxed py-4 scrollbar-thin">{REPAIR_SQL}</pre>
                 </div>
                 <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center"><Info size={12} className="mr-2"/> Utilize este script caso ocorra erro 42P01 ou perda de tabelas.</p>
-            </div>
-
-            <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-200 shadow-sm">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-4 bg-red-600 text-white rounded-2xl shadow-lg"><Bomb size={24}/></div>
-                        <div>
-                            <h3 className="text-sm font-black text-red-800 uppercase tracking-tighter">Zona de Perigo: Reset Mestre</h3>
-                            <p className="text-[10px] text-red-600 font-bold uppercase mt-1 tracking-widest max-w-sm">Apaga permanentemente todos os dados e restaura padrões de fábrica.</p>
-                        </div>
-                    </div>
-                    <button onClick={() => {
-                        const pwd = window.prompt("Digite a SENHA MESTRA para confirmar o reset total:");
-                        if (pwd === "1!Leinad") onRestoreAll();
-                    }} className="px-8 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-red-700 transition-all border border-red-500">
-                        <RefreshCw size={14} className="mr-2" /> Zerar Tudo
-                    </button>
-                </div>
             </div>
         </div>
       )}
