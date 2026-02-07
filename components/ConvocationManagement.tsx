@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { ConvokedPerson, CompetitionType, ConvocationStatus, PSS, Vacancy, ContractStatus, UserRole } from '../types';
 import { maskCPF, formatDisplayDate, generateId, removeAccents } from '../utils';
 import { 
-  X, Plus, FileSpreadsheet, Clock, Search, Trash2, CheckCircle2, AlertCircle, Download, Upload, UserPlus, Filter, Trash, UserCheck, Mail, Megaphone, Calendar, Repeat
+  X, Plus, FileSpreadsheet, Clock, Search, Trash2, Archive, Download, Upload, Repeat, Megaphone
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -31,6 +31,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
   const [showAddPssModal, setShowAddPssModal] = useState(false);
   const [showNominationModal, setShowNominationModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
@@ -66,19 +67,14 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     return list.sort((a, b) => a.ranking - b.ranking);
   }, [convocations, selectedPssId, activeSubTab, searchTerm]);
 
-  const downloadCsvTemplate = () => {
-    const headers = ["Nome", "CPF", "Email", "Perfil", "Modalidade", "Ranking"];
-    const exampleRow = ["FULANO DE TAL", "12345678900", "exemplo@email.com", "PROFESSOR SUBSTITUTO", "AC", "1"];
-    const content = "\ufeff" + headers.join(";") + "\n" + exampleRow.join(";");
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "modelo_importacao_pss.csv");
-    link.click();
-    URL.revokeObjectURL(url);
+  // Fix: Added toggleSelect function to handle individual candidate selection
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
+  // Fix: Added toggleSelectAll function to handle bulk candidate selection
   const toggleSelectAll = () => {
     if (selectedIds.length === candidates.length && candidates.length > 0) {
       setSelectedIds([]);
@@ -87,8 +83,18 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     }
   };
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  const handleDeletePss = (id: string, title: string) => {
+    if (!window.confirm(`⚠️ EXCLUSÃO DEFINITIVA: Deseja excluir o edital "${title}" e TODOS os seus candidatos? Esta ação não pode ser desfeita.`)) return;
+    setPssList(prev => prev.filter(p => p.id !== id));
+    setConvocations(prev => prev.filter(c => c.pssId !== id));
+    if (selectedPssId === id) setSelectedPssId(null);
+    onLog('EXCLUIR_PSS', `Edital "${title}" e seus registros foram removidos.`);
+  };
+
+  const handleArchivePss = (id: string, title: string, currentlyArchived: boolean) => {
+    setPssList(prev => prev.map(p => p.id === id ? { ...p, isArchived: !currentlyArchived } : p));
+    const action = currentlyArchived ? 'REATIVAR_PSS' : 'ARQUIVAR_PSS';
+    onLog(action, `Edital "${title}" foi ${currentlyArchived ? 'reativado' : 'arquivado'}.`);
   };
 
   const handleNomination = (e: React.FormEvent) => {
@@ -156,13 +162,10 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
         if (modUpper.includes('PCD')) comp = CompetitionType.PCD;
         if (modUpper.includes('PPP') || modUpper.includes('COTA')) comp = CompetitionType.PPP;
 
-        // SALVAMOS O CPF BRUTO (Apenas números) para integridade de dados
-        const rawCpf = cpf.replace(/\D/g, '');
-
         newCandidates.push({
           id: generateId(), 
           name: removeAccents(nome).toUpperCase(), 
-          cpf: rawCpf, 
+          cpf: maskCPF(cpf), // MEMORIZA JÁ MASCARADO
           email: email.toLowerCase(), 
           profile: removeAccents(perfil).toUpperCase(), 
           notice: currentPss?.title || '',
@@ -180,6 +183,8 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
     };
     reader.readAsArrayBuffer(file);
   };
+
+  const visiblePssList = pssList.filter(p => showArchived ? p.isArchived : !p.isArchived);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -215,15 +220,47 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <aside className="lg:col-span-1">
           <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[500px]">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center"><Clock size={14} className="mr-2" /> Editais Ativos</h3>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Clock size={14} className="mr-2" /> {showArchived ? 'Arquivados' : 'Ativos'}</h3>
+              <button 
+                onClick={() => setShowArchived(!showArchived)}
+                className="text-[9px] font-black text-blue-600 uppercase hover:underline"
+              >
+                {showArchived ? 'Ver Ativos' : 'Ver Arquivados'}
+              </button>
+            </div>
+            
             <div className="space-y-2 overflow-y-auto max-h-[450px] pr-1 custom-scrollbar">
-              {pssList.map(p => (
-                <div key={p.id} onClick={() => { setSelectedPssId(p.id); setSelectedIds([]); }} className={`p-4 rounded-2xl border transition-all cursor-pointer ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
-                  <p className={`text-xs font-black truncate ${selectedPssId === p.id ? 'text-blue-700' : 'text-slate-800'}`}>{p.title}</p>
+              {visiblePssList.map(p => (
+                <div 
+                  key={p.id} 
+                  onClick={() => { setSelectedPssId(p.id); setSelectedIds([]); }} 
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer group relative ${selectedPssId === p.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}
+                >
+                  <p className={`text-xs font-black truncate pr-14 ${selectedPssId === p.id ? 'text-blue-700' : 'text-slate-800'}`}>{p.title}</p>
                   <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Validade: {formatDisplayDate(p.validUntil)}</p>
+                  
+                  {canEdit && (
+                    <div className="absolute top-4 right-4 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleArchivePss(p.id, p.title, p.isArchived); }}
+                        className="p-1.5 bg-white text-slate-400 hover:text-amber-600 rounded-lg border border-slate-100 shadow-sm"
+                        title={p.isArchived ? "Reativar" : "Arquivar"}
+                      >
+                        <Archive size={12} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeletePss(p.id, p.title); }}
+                        className="p-1.5 bg-white text-slate-400 hover:text-red-600 rounded-lg border border-slate-100 shadow-sm"
+                        title="Excluir"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
-              {pssList.length === 0 && <p className="text-[10px] font-bold text-slate-300 uppercase text-center py-10">Nenhum edital cadastrado</p>}
+              {visiblePssList.length === 0 && <p className="text-[10px] font-bold text-slate-300 uppercase text-center py-10">Nenhum edital encontrado</p>}
             </div>
           </div>
         </aside>
@@ -235,16 +272,13 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                 <div>
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center"><FileSpreadsheet className="mr-3 text-blue-600" size={20} /> {currentPss?.title}</h3>
                   <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-widest">
-                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos convocados' : 'Processo de substituição (vagas remanescentes)'}
+                    {activeSubTab === 'classified' ? 'Candidatos aguardando chamamento' : activeSubTab === 'convoked' ? 'Candidatos convocados' : 'Processo de substituição'}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   {activeSubTab !== 'convoked' && canEdit && (
                     <>
-                      <button onClick={downloadCsvTemplate} className="flex items-center px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200">
-                        <Download size={14} className="mr-2" /> Modelo CSV
-                      </button>
                       <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md">
                         <Upload size={14} className="mr-2" /> Importar CSV
                       </button>
@@ -286,8 +320,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
                         <td className="px-6 py-4 font-black text-slate-900">#{c.ranking}</td>
                         <td className="px-6 py-4">
                            <p className="font-bold text-slate-800">{c.name}</p>
-                           {/* AQUI APLICAMOS A MÁSCARA DINAMICAMENTE PARA EXIBIÇÃO */}
-                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{maskCPF(c.cpf)}</p>
+                           <p className="text-[9px] text-slate-400 font-mono tracking-tighter">{c.cpf}</p>
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-500 uppercase text-[10px]">{c.profile}</td>
                         <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${c.competition === CompetitionType.AC ? 'bg-white text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>{c.competition}</span></td>
@@ -313,7 +346,7 @@ const ConvocationManagement: React.FC<ConvocationManagementProps> = ({
             <div className="bg-white rounded-[3rem] border-4 border-dashed border-slate-100 p-32 flex flex-col items-center justify-center text-center h-full">
               <FileSpreadsheet size={64} className="text-slate-200 mb-6"/>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Gestão de Classificados</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest max-w-xs">Selecione um edital para iniciar o chamamento ou substituição.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest max-w-xs">Selecione um edital na barra lateral para gerenciar os candidatos.</p>
             </div>
           )}
         </section>
