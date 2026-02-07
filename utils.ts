@@ -4,6 +4,9 @@ import { Vacancy, Occupation, ContractStatus } from './types';
 
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
+/**
+ * Remove acentuação e caracteres especiais, mantendo apenas ASCII básico.
+ */
 export const removeAccents = (str: string): string => {
   if (!str) return '';
   return str
@@ -12,22 +15,28 @@ export const removeAccents = (str: string): string => {
     .replace(/[^\x00-\x7F]/g, '');
 };
 
+/**
+ * Memoriza e formata o CPF no padrão: ***.456.789-**
+ * Garante que o dado seja armazenado já anonimizado.
+ */
 export const maskCPF = (cpf: string): string => {
   if (!cpf) return '***.***.***-**';
   
-  // Limpa caracteres não numéricos
+  // Se já estiver no formato de máscara final, retorna
+  if (cpf.startsWith('***') && cpf.endsWith('**')) return cpf;
+
   let digits = cpf.replace(/\D/g, '');
   
-  // Se for um CPF já mascarado (ex: vindo do mock), tenta extrair os números ou mantém
-  if (digits.length === 0) return cpf.includes('*') ? cpf : '***.***.***-**';
-  
-  // Recompõe zeros à esquerda (comum em Excel/CSV)
-  if (digits.length < 11) {
+  // Recompõe zeros à esquerda se necessário
+  if (digits.length > 0 && digits.length < 11) {
     digits = digits.padStart(11, '0');
   }
   
-  // Formato: ***.456.789-** (Oculta os 3 primeiros e os 2 últimos conforme solicitado)
-  return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
+  if (digits.length === 11) {
+    return `***.${digits.substring(3, 6)}.${digits.substring(6, 9)}-**`;
+  }
+  
+  return '***.***.***-**';
 };
 
 export const normalizeString = (str: string): string => {
