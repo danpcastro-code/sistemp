@@ -73,23 +73,8 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
-  const handleMasterReset = () => {
-    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados serão apagados permanentemente.")) return;
-    setVacancies([]);
-    setConvocations([]);
-    setPssList([]);
-    setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
-    setUnits([{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
-    setProfiles([{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
-    setUsers(DEFAULT_USERS);
-    setLogs([]);
-    setEmailConfig(DEFAULT_EMAIL_CONFIG);
-    setParameters(INITIAL_PARAMETERS);
-    isDirty.current = true;
-    setTimeout(() => saveToCloud(), 500);
-  };
-
   const saveToCloud = useCallback(async () => {
+    // Só grava se houver mudanças reais e se não estiver carregando do banco
     if (!isInitialLoadDone.current || isUpdatingFromRemote.current || !isDirty.current) return;
     
     setCloudStatus('syncing');
@@ -109,18 +94,17 @@ const App: React.FC = () => {
         updated_at: new Date().toISOString()
       };
 
+      // Simplificação do Upsert: usando o comportamento padrão de conflito na PK 'id'
       const { error } = await supabase
         .from('sistemp_data')
-        .upsert(payload, { onConflict: 'id' });
+        .upsert(payload);
 
       if (!error) { 
         isDirty.current = false; 
         setCloudStatus('connected'); 
         setCloudErrorMessage(null); 
       } else { 
-        console.error("Supabase Save Error:", error);
-        // Código 42P01: Tabela não encontrada
-        // Código 42501: Falha de Permissão (RLS)
+        console.error("Supabase Error:", error.code, error.message);
         if (error.code === '42P01' || error.code === '42501') {
           setCloudStatus('setup_required');
         } else {
@@ -140,7 +124,9 @@ const App: React.FC = () => {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
       
       if (!error && data) {
+        // Bloqueia o isDirty durante o preenchimento inicial
         isUpdatingFromRemote.current = true;
+        
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
         
         setVacancies(safeArr(data.vacancies));
@@ -156,6 +142,12 @@ const App: React.FC = () => {
         
         setCloudStatus('connected');
         setCloudErrorMessage(null);
+        
+        // Timeout maior para garantir que todos os effects disparados pelo set state terminem
+        setTimeout(() => { 
+          isUpdatingFromRemote.current = false;
+          isInitialLoadDone.current = true;
+        }, 1000);
       } else if (error) { 
         if (error.code === '42P01' || error.code === '42501') {
           setCloudStatus('setup_required');
@@ -163,13 +155,12 @@ const App: React.FC = () => {
           setCloudStatus('error');
         }
         setCloudErrorMessage(error.message); 
+        isInitialLoadDone.current = true; 
       } else {
-        // Se não houver dados no banco, assumimos que é a primeira vez
+        // Caso não existam dados remotos ainda
         setCloudStatus('connected');
+        isInitialLoadDone.current = true;
       }
-      
-      isInitialLoadDone.current = true;
-      setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
     } catch (e: any) { 
       setCloudStatus('error'); 
       setCloudErrorMessage(e.message); 
@@ -183,10 +174,25 @@ const App: React.FC = () => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       isDirty.current = true;
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      // Aumentado para 3 segundos para evitar limites de taxa (rate limits)
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 3000);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2000);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
+
+  const handleMasterReset = () => {
+    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados locais e na nuvem serão apagados.")) return;
+    setVacancies([]);
+    setConvocations([]);
+    setPssList([]);
+    setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
+    setUnits([{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
+    setProfiles([{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
+    setUsers(DEFAULT_USERS);
+    setLogs([]);
+    setEmailConfig(DEFAULT_EMAIL_CONFIG);
+    setParameters(INITIAL_PARAMETERS);
+    isDirty.current = true;
+    setTimeout(() => saveToCloud(), 500);
+  };
 
   if (!currentUser) return <LoginView users={users} onLogin={user => { setCurrentUser(user); localStorage.setItem(SESSION_KEY, JSON.stringify(user)); }} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
 
