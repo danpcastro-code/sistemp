@@ -73,8 +73,26 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
+  // Fix: Implemented handleMasterReset to restore the system to factory settings.
+  const handleMasterReset = useCallback(() => {
+    if (!window.confirm("Deseja realmente apagar TODOS os dados do sistema e restaurar os padrões de fábrica? Esta ação não pode ser desfeita.")) return;
+    
+    setVacancies(INITIAL_VACANCIES);
+    setParameters(INITIAL_PARAMETERS);
+    setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
+    setUnits([{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
+    setProfiles([{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
+    setConvocations(INITIAL_CONVOKED);
+    setPssList(INITIAL_PSS);
+    setUsers(DEFAULT_USERS);
+    setLogs([]);
+    setEmailConfig(DEFAULT_EMAIL_CONFIG);
+    
+    addLog('RESET_GERAL', 'Restauração total dos padrões de fábrica executada.');
+    isDirty.current = true;
+  }, [addLog]);
+
   const saveToCloud = useCallback(async () => {
-    // Só grava se houver mudanças reais e se não estiver carregando do banco
     if (!isInitialLoadDone.current || isUpdatingFromRemote.current || !isDirty.current) return;
     
     setCloudStatus('syncing');
@@ -94,23 +112,24 @@ const App: React.FC = () => {
         updated_at: new Date().toISOString()
       };
 
-      // Simplificação do Upsert: usando o comportamento padrão de conflito na PK 'id'
+      // Upsert explícito com indicação de coluna de conflito
       const { error } = await supabase
         .from('sistemp_data')
-        .upsert(payload);
+        .upsert(payload, { onConflict: 'id' });
 
       if (!error) { 
         isDirty.current = false; 
         setCloudStatus('connected'); 
         setCloudErrorMessage(null); 
       } else { 
-        console.error("Supabase Error:", error.code, error.message);
-        if (error.code === '42P01' || error.code === '42501') {
+        console.error("Supabase Save Error Details:");
+        console.dir(error); // Mostra o objeto completo no console para diagnóstico
+        if (error.code === '42P01' || error.code === '42501' || error.message?.includes('permission')) {
           setCloudStatus('setup_required');
         } else {
           setCloudStatus('error');
         }
-        setCloudErrorMessage(`${error.code}: ${error.message}`); 
+        setCloudErrorMessage(`${error.code || 'ERRO'}: ${error.message}`); 
       }
     } catch (e: any) { 
       setCloudStatus('error'); 
@@ -124,7 +143,6 @@ const App: React.FC = () => {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
       
       if (!error && data) {
-        // Bloqueia o isDirty durante o preenchimento inicial
         isUpdatingFromRemote.current = true;
         
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
@@ -143,12 +161,15 @@ const App: React.FC = () => {
         setCloudStatus('connected');
         setCloudErrorMessage(null);
         
-        // Timeout maior para garantir que todos os effects disparados pelo set state terminem
+        // Timeout de segurança após o carregamento para evitar que o isDirty dispare salvamento imediato
         setTimeout(() => { 
           isUpdatingFromRemote.current = false;
           isInitialLoadDone.current = true;
-        }, 1000);
+          isDirty.current = false; // Garante estado limpo após baixar
+        }, 2000);
       } else if (error) { 
+        console.error("Supabase Load Error:");
+        console.dir(error);
         if (error.code === '42P01' || error.code === '42501') {
           setCloudStatus('setup_required');
         } else {
@@ -157,7 +178,6 @@ const App: React.FC = () => {
         setCloudErrorMessage(error.message); 
         isInitialLoadDone.current = true; 
       } else {
-        // Caso não existam dados remotos ainda
         setCloudStatus('connected');
         isInitialLoadDone.current = true;
       }
@@ -174,25 +194,9 @@ const App: React.FC = () => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       isDirty.current = true;
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2000);
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 3000);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
-
-  const handleMasterReset = () => {
-    if (!confirm("⚠️ RESTAURAÇÃO DE FÁBRICA\nTodos os dados locais e na nuvem serão apagados.")) return;
-    setVacancies([]);
-    setConvocations([]);
-    setPssList([]);
-    setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
-    setUnits([{ id: 'u1', name: 'Departamento de Computação', status: 'active' }]);
-    setProfiles([{ id: 'p1', name: 'Professor Visitante', status: 'active' }]);
-    setUsers(DEFAULT_USERS);
-    setLogs([]);
-    setEmailConfig(DEFAULT_EMAIL_CONFIG);
-    setParameters(INITIAL_PARAMETERS);
-    isDirty.current = true;
-    setTimeout(() => saveToCloud(), 500);
-  };
 
   if (!currentUser) return <LoginView users={users} onLogin={user => { setCurrentUser(user); localStorage.setItem(SESSION_KEY, JSON.stringify(user)); }} onResetDefaults={() => setUsers(DEFAULT_USERS)} />;
 
