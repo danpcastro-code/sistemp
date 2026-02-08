@@ -83,8 +83,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'users' | 'email' | 'cloud' | 'backup'>('params');
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
   const [showAddParamModal, setShowAddParamModal] = useState(false);
-  const backupInputRef = useRef<HTMLInputElement>(null);
-
+  
   const togglePass = (id: string) => setShowPass(p => ({ ...p, [id]: !p[id] }));
 
   const handleAddParam = (e: React.FormEvent<HTMLFormElement>) => {
@@ -120,34 +119,34 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     onLog('USUARIO', `Novo operador ${newUser.name} cadastrado.`);
   };
 
+  // SCRIPT SQL DE REPARO - FOCO EM DESATIVAR RLS E GARANTIR GRANTS
   const sqlFix = `
--- 1. CRIAÇÃO DA TABELA
+-- 1. CRIAÇÃO DA TABELA (COM JSONB PADRÃO)
 CREATE TABLE IF NOT EXISTS sistemp_data (
   id INT PRIMARY KEY,
-  vacancies JSONB DEFAULT '[]',
-  parameters JSONB DEFAULT '[]',
-  agencies JSONB DEFAULT '[]',
-  units JSONB DEFAULT '[]',
-  profiles JSONB DEFAULT '[]',
-  convocations JSONB DEFAULT '[]',
-  pss_list JSONB DEFAULT '[]',
-  users JSONB DEFAULT '[]',
-  logs JSONB DEFAULT '[]',
-  email_config JSONB DEFAULT '{}',
+  vacancies JSONB DEFAULT '[]'::jsonb,
+  parameters JSONB DEFAULT '[]'::jsonb,
+  agencies JSONB DEFAULT '[]'::jsonb,
+  units JSONB DEFAULT '[]'::jsonb,
+  profiles JSONB DEFAULT '[]'::jsonb,
+  convocations JSONB DEFAULT '[]'::jsonb,
+  pss_list JSONB DEFAULT '[]'::jsonb,
+  users JSONB DEFAULT '[]'::jsonb,
+  logs JSONB DEFAULT '[]'::jsonb,
+  email_config JSONB DEFAULT '{}'::jsonb,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. GARANTIR REGISTRO MESTRE
+-- 2. GARANTIR REGISTRO MESTRE ID=1
 INSERT INTO sistemp_data (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
--- 3. PERMISSÕES CRÍTICAS (RESOLVE ERRO DE GRAVAÇÃO)
--- Desativa o RLS para permitir upsert anônimo (mais simples para CTU)
+-- 3. DESATIVAR RLS (CRÍTICO PARA PERMITIR GRAVAÇÃO PELA CHAVE ANON)
 ALTER TABLE sistemp_data DISABLE ROW LEVEL SECURITY;
 
--- 4. CONCEDER ACESSOS AO PAPEL ANÔNIMO
-GRANT ALL ON sistemp_data TO anon;
-GRANT ALL ON sistemp_data TO authenticated;
-GRANT ALL ON sistemp_data TO service_role;
+-- 4. CONCEDER ACESSOS TOTAIS AO PAPEL ANÔNIMO
+GRANT ALL ON TABLE sistemp_data TO anon;
+GRANT ALL ON TABLE sistemp_data TO authenticated;
+GRANT ALL ON TABLE sistemp_data TO service_role;
   `.trim();
 
   return (
@@ -217,23 +216,23 @@ GRANT ALL ON sistemp_data TO service_role;
                <div className="space-y-6">
                  <div className="p-6 bg-red-50 border border-red-100 rounded-2xl">
                     <h4 className="text-[10px] font-black text-red-600 uppercase tracking-widest flex items-center mb-3">
-                        <AlertTriangle size={14} className="mr-2"/> Diagnóstico de Gravação
+                        <AlertTriangle size={14} className="mr-2"/> Diagnóstico de Erro
                     </h4>
                     <p className="text-xs text-red-700 leading-relaxed font-medium">
-                        Se o sistema exibe "Erro de Gravação", geralmente é porque a tabela no Supabase tem o RLS (Row Level Security) ativado, o que bloqueia o sistema.
+                        O erro de gravação ocorre quando o Supabase bloqueia a alteração de dados via chave pública por motivos de segurança (RLS). 
                     </p>
                     <div className="mt-4 p-4 bg-white rounded-xl border border-red-200">
-                        <p className="text-[10px] font-black text-slate-700 uppercase mb-2">Mensagem do Servidor:</p>
-                        <p className="text-[10px] font-mono text-red-500 break-all">{cloudErrorMessage || "Sem detalhes adicionais."}</p>
+                        <p className="text-[10px] font-black text-slate-700 uppercase mb-2">Código do Erro:</p>
+                        <p className="text-[10px] font-mono text-red-500 break-all">{cloudErrorMessage || "Tabela sistemp_data não autorizada."}</p>
                     </div>
                  </div>
                  <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Instruções de Reparo</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 font-bold uppercase">Como Resolver Permanentemente:</p>
                     <ol className="text-[10px] text-slate-600 space-y-2 list-decimal pl-4 font-bold uppercase">
                         <li>Copie o script SQL ao lado.</li>
-                        <li>Acesse o painel do Supabase.</li>
-                        <li>Vá em "SQL Editor" {`>`} "New Query".</li>
-                        <li>Cole e clique em "Run".</li>
+                        <li>No Supabase, clique em <b>SQL Editor</b>.</li>
+                        <li>Crie uma <b>New Query</b>.</li>
+                        <li>Cole o código e clique no botão <b>RUN</b>.</li>
                     </ol>
                  </div>
                </div>
@@ -243,14 +242,78 @@ GRANT ALL ON sistemp_data TO service_role;
                  <div className="p-4 bg-black/40 rounded-xl text-[9px] font-mono text-slate-400 overflow-x-auto h-60 custom-scrollbar">
                    <pre>{sqlFix}</pre>
                  </div>
-                 <button onClick={() => { navigator.clipboard.writeText(sqlFix); alert('Script copiado com sucesso! Execute-o no Supabase.'); }} className="mt-6 w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 transition-all">Copiar Script de Reparo</button>
+                 <button onClick={() => { navigator.clipboard.writeText(sqlFix); alert('Script copiado! Execute no SQL Editor do Supabase.'); }} className="mt-6 w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 transition-all">Copiar Script de Autorização</button>
                </div>
              </div>
           </div>
         </div>
       )}
+
+      {activeSubTab === 'users' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in">
+          <div className="lg:col-span-1 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter mb-6 flex items-center"><UserPlus className="mr-3 text-blue-600" size={20}/> Novo Operador</h3>
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <input name="name" required placeholder="Nome Completo" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-blue-500" />
+              <input name="username" required placeholder="Login de Acesso" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-blue-500" />
+              <input name="password" type="password" required placeholder="Senha" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-blue-500" />
+              <select name="role" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-blue-500">
+                <option value={UserRole.HR}>Recursos Humanos</option>
+                <option value={UserRole.ADMIN}>Administrador Master</option>
+                <option value={UserRole.CONSULTANT}>Apenas Consulta</option>
+              </select>
+              <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all">Criar Acesso</button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+            <table className="w-full text-left text-[11px]">
+              <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-5">Nome do Operador</th>
+                  <th className="px-8 py-5">Login</th>
+                  <th className="px-8 py-5">Perfil</th>
+                  <th className="px-8 py-5 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {users.map(u => (
+                  <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-8 py-5 font-bold text-slate-700">{u.name}</td>
+                    <td className="px-8 py-5 font-mono text-slate-500">{u.username}</td>
+                    <td className="px-8 py-5">
+                      <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase ${u.role === UserRole.ADMIN ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>{u.role}</span>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <button onClick={() => setUsers(prev => prev.filter(i => i.id !== u.id))} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       
-      {/* Restantes das abas omitidas por brevidade, mas mantidas funcionalmente */}
+      {activeSubTab === 'backup' && (
+        <div className="space-y-8 animate-in fade-in">
+          <div className="bg-white p-12 rounded-[2.5rem] border border-slate-200 shadow-sm text-center">
+             <div className="p-5 bg-red-50 text-red-600 rounded-3xl inline-block mb-6 border border-red-100"><Bomb size={48}/></div>
+             <h3 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Zona de Risco</h3>
+             <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-2 max-w-md mx-auto">Procedimentos irreversíveis de limpeza e restauração de parâmetros de fábrica.</p>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-12 max-w-2xl mx-auto">
+                <button onClick={onRestoreAll} className="p-8 bg-white border-2 border-slate-100 rounded-[2.5rem] hover:border-red-500 hover:bg-red-50 transition-all group">
+                   <RefreshCw size={32} className="text-slate-200 group-hover:text-red-600 mx-auto mb-4"/>
+                   <span className="text-[10px] font-black uppercase text-slate-400 group-hover:text-red-600">Restaurar Padrões Master</span>
+                </button>
+                <div className="p-8 bg-slate-900 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center">
+                   <ShieldCheck size={32} className="text-blue-500 mb-4"/>
+                   <span className="text-[10px] font-black uppercase text-white">Sincronização Ativa</span>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
