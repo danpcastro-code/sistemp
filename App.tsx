@@ -91,25 +91,58 @@ const App: React.FC = () => {
 
   const saveToCloud = useCallback(async () => {
     if (!isInitialLoadDone.current || isUpdatingFromRemote.current || !isDirty.current) return;
+    
     setCloudStatus('syncing');
     try {
       const payload = { 
-        id: 1, vacancies, parameters, agencies, units, profiles, convocations, pss_list: pssList, users, logs,
-        email_config: emailConfig, updated_at: new Date().toISOString()
+        id: 1, 
+        vacancies, 
+        parameters, 
+        agencies, 
+        units, 
+        profiles, 
+        convocations, 
+        pss_list: pssList, 
+        users, 
+        logs,
+        email_config: emailConfig, 
+        updated_at: new Date().toISOString()
       };
-      const { error } = await supabase.from('sistemp_data').upsert(payload);
-      if (!error) { isDirty.current = false; setCloudStatus('connected'); setCloudErrorMessage(null); }
-      else { setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error'); setCloudErrorMessage(error.message); }
-    } catch (e: any) { setCloudStatus('error'); setCloudErrorMessage(e.message); }
+
+      const { error } = await supabase
+        .from('sistemp_data')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (!error) { 
+        isDirty.current = false; 
+        setCloudStatus('connected'); 
+        setCloudErrorMessage(null); 
+      } else { 
+        console.error("Supabase Save Error:", error);
+        // Código 42P01: Tabela não encontrada
+        // Código 42501: Falha de Permissão (RLS)
+        if (error.code === '42P01' || error.code === '42501') {
+          setCloudStatus('setup_required');
+        } else {
+          setCloudStatus('error');
+        }
+        setCloudErrorMessage(`${error.code}: ${error.message}`); 
+      }
+    } catch (e: any) { 
+      setCloudStatus('error'); 
+      setCloudErrorMessage(e.message); 
+    }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig]);
 
   const loadFromCloud = useCallback(async () => {
     setCloudStatus('syncing');
     try {
       const { data, error } = await supabase.from('sistemp_data').select('*').eq('id', 1).maybeSingle();
+      
       if (!error && data) {
         isUpdatingFromRemote.current = true;
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
+        
         setVacancies(safeArr(data.vacancies));
         setParameters(safeArr(data.parameters).length ? data.parameters : INITIAL_PARAMETERS);
         setAgencies(safeArr(data.agencies).length ? data.agencies : [{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
@@ -120,20 +153,38 @@ const App: React.FC = () => {
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
         setEmailConfig(data.email_config && typeof data.email_config === 'object' && Object.keys(data.email_config).length > 0 ? data.email_config : DEFAULT_EMAIL_CONFIG);
+        
         setCloudStatus('connected');
-      } else if (error) { setCloudStatus(error.code === '42P01' ? 'setup_required' : 'error'); setCloudErrorMessage(error.message); }
-      else { setCloudStatus('connected'); }
+        setCloudErrorMessage(null);
+      } else if (error) { 
+        if (error.code === '42P01' || error.code === '42501') {
+          setCloudStatus('setup_required');
+        } else {
+          setCloudStatus('error');
+        }
+        setCloudErrorMessage(error.message); 
+      } else {
+        // Se não houver dados no banco, assumimos que é a primeira vez
+        setCloudStatus('connected');
+      }
+      
       isInitialLoadDone.current = true;
       setTimeout(() => { isUpdatingFromRemote.current = false; }, 500);
-    } catch (e: any) { setCloudStatus('error'); setCloudErrorMessage(e.message); isInitialLoadDone.current = true; }
+    } catch (e: any) { 
+      setCloudStatus('error'); 
+      setCloudErrorMessage(e.message); 
+      isInitialLoadDone.current = true; 
+    }
   }, []);
 
   useEffect(() => { loadFromCloud(); }, [loadFromCloud]);
+
   useEffect(() => {
     if (isInitialLoadDone.current && !isUpdatingFromRemote.current) {
       isDirty.current = true;
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = window.setTimeout(saveToCloud, 2000);
+      // Aumentado para 3 segundos para evitar limites de taxa (rate limits)
+      saveTimeoutRef.current = window.setTimeout(saveToCloud, 3000);
     }
   }, [vacancies, parameters, agencies, units, profiles, convocations, pssList, users, logs, emailConfig, saveToCloud]);
 
