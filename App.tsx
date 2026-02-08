@@ -13,6 +13,7 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
+// NOVAS CREDENCIAIS FORNECIDAS PELO USUÁRIO
 const SUPABASE_URL = "https://xqxcthctiqewoghxbtkx.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxeGN0aGN0aXFld29naHhidGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MDIyNDcsImV4cCI6MjA4NTk3ODI0N30.Jm121tsrpTLUJ22yZyMJZx36utDH3HoGD1kUOYLgZco"; 
 
@@ -73,10 +74,8 @@ const App: React.FC = () => {
     isDirty.current = true;
   }, [currentUser]);
 
-  // Fix: Implemented handleMasterReset to restore the system to factory settings.
   const handleMasterReset = useCallback(() => {
-    if (!window.confirm("Deseja realmente apagar TODOS os dados do sistema e restaurar os padrões de fábrica? Esta ação não pode ser desfeita.")) return;
-    
+    if (!window.confirm("Deseja realmente apagar TODOS os dados do sistema e restaurar os padrões de fábrica?")) return;
     setVacancies(INITIAL_VACANCIES);
     setParameters(INITIAL_PARAMETERS);
     setAgencies([{ id: 'a1', name: 'Universidade Federal', status: 'active' }]);
@@ -87,9 +86,8 @@ const App: React.FC = () => {
     setUsers(DEFAULT_USERS);
     setLogs([]);
     setEmailConfig(DEFAULT_EMAIL_CONFIG);
-    
-    addLog('RESET_GERAL', 'Restauração total dos padrões de fábrica executada.');
     isDirty.current = true;
+    addLog('RESET_GERAL', 'Restauração total dos padrões de fábrica executada.');
   }, [addLog]);
 
   const saveToCloud = useCallback(async () => {
@@ -112,7 +110,6 @@ const App: React.FC = () => {
         updated_at: new Date().toISOString()
       };
 
-      // Upsert explícito com indicação de coluna de conflito
       const { error } = await supabase
         .from('sistemp_data')
         .upsert(payload, { onConflict: 'id' });
@@ -122,8 +119,7 @@ const App: React.FC = () => {
         setCloudStatus('connected'); 
         setCloudErrorMessage(null); 
       } else { 
-        console.error("Supabase Save Error Details:");
-        console.dir(error); // Mostra o objeto completo no console para diagnóstico
+        console.error("Supabase Save Error:", error);
         if (error.code === '42P01' || error.code === '42501' || error.message?.includes('permission')) {
           setCloudStatus('setup_required');
         } else {
@@ -144,7 +140,6 @@ const App: React.FC = () => {
       
       if (!error && data) {
         isUpdatingFromRemote.current = true;
-        
         const safeArr = (arr: any) => Array.isArray(arr) ? arr : [];
         
         setVacancies(safeArr(data.vacancies));
@@ -156,20 +151,17 @@ const App: React.FC = () => {
         setPssList(safeArr(data.pss_list).length ? data.pss_list : INITIAL_PSS);
         setUsers(safeArr(data.users).length ? data.users : DEFAULT_USERS);
         setLogs(safeArr(data.logs));
-        setEmailConfig(data.email_config && typeof data.email_config === 'object' && Object.keys(data.email_config).length > 0 ? data.email_config : DEFAULT_EMAIL_CONFIG);
+        setEmailConfig(data.email_config || DEFAULT_EMAIL_CONFIG);
         
         setCloudStatus('connected');
         setCloudErrorMessage(null);
         
-        // Timeout de segurança após o carregamento para evitar que o isDirty dispare salvamento imediato
         setTimeout(() => { 
           isUpdatingFromRemote.current = false;
           isInitialLoadDone.current = true;
-          isDirty.current = false; // Garante estado limpo após baixar
-        }, 2000);
+          isDirty.current = false; 
+        }, 1500);
       } else if (error) { 
-        console.error("Supabase Load Error:");
-        console.dir(error);
         if (error.code === '42P01' || error.code === '42501') {
           setCloudStatus('setup_required');
         } else {
