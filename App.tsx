@@ -13,8 +13,8 @@ import { Vacancy, LegalParameter, ConvokedPerson, UserRole, User, AuditLog, Emai
 import { createClient } from '@supabase/supabase-js';
 import { generateId } from './utils';
 
-const SUPABASE_URL = "https://nvbjiqfnhsgriuejrnad.supabase.co"; 
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52YmppcWZuaHNncml1ZWpybmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjE1MjUsImV4cCI6MjA4NTg5NzUyNX0.t_bpmk4Ul5CAPewYDOBN5rWRWkdiLIGpiZrdyn6OaBo"; 
+const SUPABASE_URL = "https://xqxcthctiqewoghxbtkx.supabase.co"; 
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxeGN0aGN0aXFld29naHhidGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MDIyNDcsImV4cCI6MjA4NTk3ODI0N30.Jm121tsrpTLUJ22yZyMJZx36utDH3HoGD1kUOYLgZco"; 
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const SESSION_KEY = 'ctu_gestao_session_v1';
